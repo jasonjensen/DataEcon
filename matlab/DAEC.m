@@ -15,6 +15,10 @@ classdef DAEC < handle
         debug_
     end
 
+    properties (Constant)
+        enums = daecenums(); % daecenums()
+    end
+
     methods (Access=private)
         % private constructor, so it doesn't get called willy-nilly
         function inst = DAEC()
@@ -51,7 +55,11 @@ classdef DAEC < handle
                     error('DataEcon not supported on your platform.');
             end
             % capture output args to suppress warnings
-            [~,~] = loadlibrary(libpath, hpath);
+            [~,~] = loadlibrary(libpath, hpath); 
+            % [~,~] = loadlibrary(libpath, hpath, mfilename='daecinfo');
+            if not(strcmp(daec.enums.version, DAEC.version))
+                warning('Incompatible DAEC version.')
+            end
         end
 
         function unload()
@@ -91,10 +99,15 @@ classdef DAEC < handle
         % https://www.mathworks.com/help/matlab/matlab_external/passing-arguments-to-shared-library-functions.html
 
         function varargout = check_call(func, varargin)
+            varargout = cell(1, nargout);
+            [status, varargout{:}] = DAEC.call(func, varargin{:});
+            DAEC.check(status);
+        end
+
+        function varargout = call(func, varargin)
             inst = DAEC.instance;
             varargout = cell(1, nargout);
-            [status, varargout{:}] = calllib(inst.libname, func, varargin{:});
-            DAEC.check(status);
+            [varargout{:}] = calllib(inst.libname, func, varargin{:});           
         end
 
         function check(status)

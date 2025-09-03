@@ -35,7 +35,7 @@ extern "C"
     int de_clear_error(void);
 
     /* positive error codes come from sqlite: https://sqlite.org/rescode.html */
-    enum
+    typedef enum
     {
         DE_SUCCESS = 0,       /* no error */
         DE_ERR_ALLOC = -1000, /* memory allocation error */
@@ -61,7 +61,7 @@ extern "C"
         DE_INEXACT,           /* inexact date conversion, e.g. Saturday or Sunday specified as business daily date */
         DE_RANGE,             /* value out of range */
         DE_INTERNAL,          /* internal error */
-    };
+    } status_t;
 
     /* ***************************** file **************************************** */
 

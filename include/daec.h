@@ -424,6 +424,26 @@ extern "C"
     /* Release resources allocated for the given search. */
     int de_finalize_search(de_search search);
 
+    /* ***************************** search ************************************** */
+    /* ******************** matlab pointer extractors **************************** */
+    double get_double_from_voidptr(const void* p);
+    int64_t get_int64_from_voidptr(const void* p);
+    uint64_t get_uint64_from_voidptr(const void* p);
+    const char* get_string_from_voidptr(const void* p);
+    double get_complex_real_from_voidptr(const void* p);
+    double get_complex_imag_from_voidptr(const void* p);
+    /* Array/Vector access functions with byte offset */
+    double get_double_from_voidptr_offset(const void* p, size_t byte_offset);
+    int64_t get_int64_from_voidptr_offset(const void* p, size_t byte_offset);
+    uint64_t get_uint64_from_voidptr_offset(const void* p, size_t byte_offset);
+    /* Vectorized array extraction functions for performance optimization */
+    /* Copy array of values from void pointer to pre-allocated output array */
+    void get_double_array_from_voidptr(const void* p, size_t length, double* output);
+    void get_int64_array_from_voidptr(const void* p, size_t length, int64_t* output);
+    void get_uint64_array_from_voidptr(const void* p, size_t length, uint64_t* output);
+    int32_t get_int32_from_voidptr(const void* p);
+    signed char get_char_from_voidptr(const void* p);
+
 #ifdef __cplusplus
 }
 #endif

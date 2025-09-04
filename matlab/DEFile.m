@@ -114,10 +114,10 @@ classdef DEFile < handle
                     end
                 end
             catch exception
-                DAEC.call_check('de_finalize_search', search);
+                DAEC.check_call('de_finalize_search', search);
                 rethrow(exception);
             end
-            DAEC.call_check('de_finalize_search', search);
+            DAEC.check_call('de_finalize_search', search);
         end
 
         function id = new_catalog(de, pid, name)
@@ -132,6 +132,68 @@ classdef DEFile < handle
                 pid = 0;
             end
             [~, sz] = DAEC.check_call('de_catalog_size', de.ptr, pid, -1);
+        end
+
+        function obj = read(de, pid, name)
+            if nargin == 2
+                name = pid;
+                pid = 0;
+            end
+            id = find_object(de, pid, name);
+            obj = read_id(de, id);
+        end
+
+        function obj = read_id(de, id)
+            if nargin == 1
+                id = 0;
+            end
+            % de_load_object(voidPtr, int64, object_tPtr)
+            objectStruct = libstruct('object_t');
+            objectStruct.obj_type = int32(0);
+            objectStruct.obj_class = int32(0);
+            objectPtr = libpointer('object_t', objectStruct);
+            [~, obj_t] = DAEC.check_call('de_load_object', de.ptr, id, objectPtr);
+            % now get the value
+            switch DAEC.enums.class_t.(obj_t.obj_class)
+                case DAEC.enums.class_t.class_scalar
+                    obj = retrieve_scalar(de, obj_t);
+                otherwise
+                    error('unknown object class')
+            end           
+        end
+
+        function val = retrieve_scalar(de, obj_t)
+            scalarStruct = libstruct('scalar_t');
+            scalarStruct.object = obj_t;
+            scalarPtr = libpointer('scalar_t', scalarStruct);
+            [~, scalar_t] = DAEC.check_call('de_load_scalar', de.ptr, obj_t.id, scalarPtr);
+
+            switch DAEC.enums.type_t.(obj_t.obj_type)
+                case DAEC.enums.type_t.type_float
+                    val = DAEC.call('get_double_from_voidptr', scalar_t.value);
+                case DAEC.enums.type_t.type_signed
+                    val = int64(DAEC.call('get_int64_from_voidptr', scalar_t.value));
+                case DAEC.enums.type_t.type_unsigned
+                    val = int64(DAEC.call('get_uint64_from_voidptr', scalar_t.value));
+                case DAEC.enums.type_t.type_string
+                    val = DAEC.call('get_string_from_voidptr', scalar_t.value);
+                    if isempty(val)
+                        val = '';
+                    else
+                        val = char(val);  % Convert to MATLAB string
+                        % Clean up any null terminators
+                        null_idx = find(val == 0, 1);
+                        if ~isempty(null_idx)
+                            val = val(1:null_idx-1);
+                        end
+                    end
+                case DAEC.enums.type_t.type_complex
+                    real_part = DAEC.call('get_complex_real_from_voidptr', scalar_t.value);
+                    imag_part = DAEC.call('get_complex_imag_from_voidptr', scalar_t.value);
+                    val = complex(real_part, imag_part);
+                otherwise
+                    error(sprintf('unsupported scalar type %s', obj_t.obj_type))
+            end
         end
     end
 

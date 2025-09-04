@@ -25,7 +25,7 @@ classdef DAEC < handle
             inst.libname = '';
             switch computer
                 case {'PCWIN', 'PCWIN64'}
-                    inst.libname = 'daec';
+                    inst.libname = 'libdaec';
                 case {'GLNX86', 'GLNXA64'}
                     inst.libname = 'libdaec';
             end
@@ -45,17 +45,17 @@ classdef DAEC < handle
                 return
             end
             % find the library and load it
-            hpath = fullfile(daecroot, 'include', 'daec.h');
+            hpath = fullfile('..','include', 'daec.h');
             switch computer()
                 case {'PCWIN', 'PCWIN64'}
-                    libpath = fullfile(daecroot, 'lib', 'daec.dll');
+                    libpath = fullfile('..', 'bin', 'libdaec.dll');
                 case {'GLNX86', 'GLNXA64'}
-                    libpath = fullfile(daecroot, 'lib', 'libdaec.so');
+                    libpath = fullfile('..', 'lib', 'libdaec.so');
                 otherwise
                     error('DataEcon not supported on your platform.');
             end
             % capture output args to suppress warnings
-            [~,~] = loadlibrary(libpath, hpath); 
+            [~,~] = loadlibrary(libpath, hpath, 'alias', 'libdaec');
             % [~,~] = loadlibrary(libpath, hpath, mfilename='daecinfo');
             if not(strcmp(daec.enums.version, DAEC.version))
                 warning('Incompatible DAEC version.')
@@ -108,6 +108,12 @@ classdef DAEC < handle
             inst = DAEC.instance;
             varargout = cell(1, nargout);
             [varargout{:}] = calllib(inst.libname, func, varargin{:});           
+        end
+
+        function varargout = call_shim(func, varargin)
+            inst = DAEC.instance;
+            varargout = cell(1, nargout);
+            [varargout{:}] = calllib(inst.shimname, func, varargin{:});           
         end
 
         function check(status)

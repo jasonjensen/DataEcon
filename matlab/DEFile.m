@@ -15,6 +15,9 @@ classdef DEFile < handle
                 o.memory = false
                 o.truncate = false
             end
+            if isa(path, 'string')
+                path = char(path)
+            end
             ptr = libpointer('voidPtrPtr', 0);
             if o.memory
                 DAEC.check_call('de_open_memory', ptr);

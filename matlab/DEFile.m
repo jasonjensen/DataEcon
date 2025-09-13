@@ -174,7 +174,7 @@ classdef DEFile < handle
                 case DAEC.enums.type_t.type_signed
                     val = int64(DAEC.call('get_int64_from_voidptr', scalar_t.value));
                 case DAEC.enums.type_t.type_unsigned
-                    val = int64(DAEC.call('get_uint64_from_voidptr', scalar_t.value));
+                    val = uint64(DAEC.call('get_uint64_from_voidptr', scalar_t.value));
                 case DAEC.enums.type_t.type_string
                     val = DAEC.call('get_string_from_voidptr', scalar_t.value);
                     if isempty(val)
@@ -195,6 +195,39 @@ classdef DEFile < handle
                     error(sprintf('unsupported scalar type %s', obj_t.obj_type))
             end
         end
+
+        function id = store_scalar(de, name, value, pid)
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [type, freq, val_ptr, nbytes] = DAEC.prepare_scalar(value);
+
+
+            [~, ~, ~, id] = DAEC.check_call('de_store_scalar', de.ptr, pid, char(name), type, freq, nbytes, val_ptr, id_ptr);
+
+        end
+    end
+
+    methods % write helpers
+        function ensure_writeable(de, name)
+            if de.isopen() == false
+                error(sprintf('DE file not opened.'))
+            end
+
+            if de.readonly == true
+                error(sprintf('Cannot write to DE file opened in read only mode.'))
+            end
+
+            if ~ischar(name) && ~isstring(name)
+                error(sprintf('Object name must be a string or char array.'))
+            end
+        end
+
+       
     end
 
 end

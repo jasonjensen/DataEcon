@@ -132,4 +132,51 @@ classdef DAEC < handle
         end
     end
 
+    methods (Static) % write helpers
+         function [type, freq, val_ptr, nbytes] = prepare_scalar(value)
+            freq = DAEC.enums.frequency_t.freq_none;
+            nbytes = 8;
+            type = 0;
+            if isfield(DAEC.enums.type_t_by_matlab_class, class(value))
+                type = DAEC.enums.type_t_by_matlab_class.(class(value));
+            end
+            switch type
+                case 1 % integer
+                    val_ptr = libpointer('int64Ptr', int64(value));
+                    nbytes = 8;
+                case 2 % unsigned int
+                    val_ptr = libpointer('int64Ptr', int64(value));
+                    nbytes = 8;
+                case 3 % date
+                    freq = DAEC.enums.frequency_t.freq_daily;
+                    [year, month, day] = ymd(value);
+                    date_ptr = libpointer('int64Ptr', int64(0));
+                    val_ptr = DAEC.check_call('de_pack_calendar_date', freq, int32(year), uint32(month), uint32(day), date_ptr);
+                case 4 % double
+                    if isreal(value)
+                        val_ptr = libpointer('doublePtr', double(value));
+                    else
+                        type = DAEC.enums.type_t.type_complex;
+                        val_ptr = libpointer('doublePtr', [real(value), imag(value)]);
+                        nbytes = 16;
+                    end
+                case 6 % string
+                    char_val = char(value);
+                    % Ensure null termination
+                    if isempty(char_val) || char_val(end) ~= char(0)
+                        char_val = [char_val, char(0)];
+                    end
+                    val_ptr = libpointer('cstring', char_val);
+                    nbytes = length(char_val);
+                otherwise
+                    if isfloat(value) && isscalar(value)
+                        type = 4;
+                        val_ptr = libpointer('doublePtr', double(value));
+                    else
+                        error('Unsupported value type %s', value)
+                    end
+            end
+        end
+    end
+
 end

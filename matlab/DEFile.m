@@ -201,6 +201,10 @@ classdef DEFile < handle
                 for f = fieldnames(val)'
                     write(de, f{1}, val.(f{1}), new_pid);
                 end
+            elseif(isa(val, 'TSeries'))
+                [~] = store_tseries(de, name, val, pid);
+            elseif(isa(val, 'MVTSeries'))
+                [~] = store_tseries(de, name, val, pid);
             elseif isscalar(val)
                 [~] = store_scalar(de, name, val, pid);
             elseif isvector(val) && ~ischar(val) && ~isstring(val) && size(val,2) == 1
@@ -277,8 +281,7 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_plain
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
-                    % todo: make tseries
-                    val = data;
+                    val = TSeries(MIT(DAEC.enums.frequency_t.(tseries_t.axis.frequency), tseries_t.axis.first), data);
                 case DAEC.enums.axis_type_t.axis_names
                     % todo: make something
                     val = data;
@@ -305,7 +308,8 @@ classdef DEFile < handle
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
                     % todo: make mvtseries
-                    val = data;
+                    unpacked_names = DAEC.unpack_column_names(mvtseries_t.axis2.names, mvtseries_t.axis2.length);
+                    val = MVTSeries(MIT(DAEC.enums.frequency_t.(mvtseries_t.axis1.frequency), mvtseries_t.axis1.first), unpacked_names, data);
                 case DAEC.enums.axis_type_t.axis_names
                     % todo: make something
                     val = data;
@@ -342,6 +346,32 @@ classdef DEFile < handle
 
 
         end
+
+        function id = store_tseries(de, name, value, pid)
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(value.values(:));
+            
+            val_size = size(value.values);
+            if val_size(2) == 1
+                % tseries
+                axis_id = de.create_axis(value.start.frequency, val_size(1), value.start.value);
+                [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
+            elseif length(val_size) == 2
+                % mvtseries
+                axis_id1 = de.create_axis(value.start.frequency, val_size(1), value.start.value);
+                axis_id2 = de.create_names_axis(value.names);
+                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+            else
+                error('Too many dimensions!')
+            end
+            % type = DAEC.enums.class_t.class_vector;
+        end       
     end
 
     methods % write helpers
@@ -368,6 +398,11 @@ classdef DEFile < handle
             end
         end
 
+        function axis_id = create_names_axis(de, names)
+            axis_id_ptr = libpointer('int64Ptr', int64(0));
+            names_packed = DAEC.pack_column_names(names);
+            [~, ~, axis_id] = DAEC.check_call('de_axis_names', de.ptr, int64(numel(names)), names_packed, axis_id_ptr);
+        end
        
     end
 

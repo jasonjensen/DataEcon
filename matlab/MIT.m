@@ -56,6 +56,9 @@ classdef MIT < handle
                     val = DAEC.check_call('de_pack_calendar_date', obj.frequency, int32(varargin{2}),uint32(varargin{3}), uint32(varargin{4}), val_ptr);
                 end
                 obj.value=val;
+            else
+                obj.frequency = varargin{1};
+                obj.value = varargin{2};
             end
         end
 

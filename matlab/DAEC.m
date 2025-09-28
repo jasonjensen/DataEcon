@@ -178,6 +178,16 @@ classdef DAEC < handle
                     end
             end
         end
+
+        function packed_names = pack_column_names(names)
+            if isempty(names)
+                packed_names = '';
+                return;
+            end
+            
+            % Convert to cell array of chars for consistency
+            packed_names = strjoin(names, char(10));  % char(10) = '\n'
+        end
     end
 
     methods (Static) % read helpers
@@ -209,6 +219,23 @@ classdef DAEC < handle
                     error(sprintf('unsupported array type %s', eltype))
             end
         end
+
+        function colnames = unpack_column_names(names, ncols)
+            
+            colnames = {};
+            
+            if isempty(names) || ncols == 0
+                return;
+            end
+            
+            % Split on newline characters (Julia convention)
+            if contains(names, char(10))
+                colnames = strsplit(names, char(10), 'CollapseDelimiters', false);
+            else
+                colnames = {names};
+            end                
+        end
+
     end
 
 end

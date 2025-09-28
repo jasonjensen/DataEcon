@@ -134,8 +134,9 @@ classdef DAEC < handle
 
     methods (Static) % write helpers
          function [type, freq, val_ptr, nbytes] = prepare_scalar(value)
+            nvals = numel(value);
             freq = DAEC.enums.frequency_t.freq_none;
-            nbytes = 8;
+            nbytes = nvals * 8;
             type = 0;
             if isfield(DAEC.enums.type_t_by_matlab_class, class(value))
                 type = DAEC.enums.type_t_by_matlab_class.(class(value));
@@ -143,10 +144,8 @@ classdef DAEC < handle
             switch type
                 case 1 % integer
                     val_ptr = libpointer('int64Ptr', int64(value));
-                    nbytes = 8;
                 case 2 % unsigned int
                     val_ptr = libpointer('int64Ptr', int64(value));
-                    nbytes = 8;
                 case 3 % date
                     freq = DAEC.enums.frequency_t.freq_daily;
                     [year, month, day] = ymd(value);
@@ -157,8 +156,9 @@ classdef DAEC < handle
                         val_ptr = libpointer('doublePtr', double(value));
                     else
                         type = DAEC.enums.type_t.type_complex;
-                        val_ptr = libpointer('doublePtr', [real(value), imag(value)]);
-                        nbytes = 16;
+                        convertedValue = complex(double(real(value)), double(imag(value)));
+                        val_ptr = libpointer('doublePtr', [real(convertedValue), imag(convertedValue)]);
+                        nbytes = nvals* 16;
                     end
                 case 6 % string
                     char_val = char(value);
@@ -168,6 +168,7 @@ classdef DAEC < handle
                     end
                     val_ptr = libpointer('cstring', char_val);
                     nbytes = length(char_val);
+                    % todo: vector of strings?
                 otherwise
                     if isfloat(value) && isscalar(value)
                         type = 4;
@@ -175,6 +176,37 @@ classdef DAEC < handle
                     else
                         error('Unsupported value type %s', value)
                     end
+            end
+        end
+    end
+
+    methods (Static) % read helpers
+        function data = extract_array_data(val_ptr, eltype, axis1_length, axis2_length)
+            numel = axis1_length*axis2_length;
+            switch eltype
+                case DAEC.enums.type_t.type_float
+                    data = zeros(axis1_length, axis2_length, 'double');
+                    data_ptr = libpointer('doublePtr', data);
+                    [~, data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel, data_ptr);
+                case DAEC.enums.type_t.type_signed
+                    data = zeros(axis1_length, axis2_length, 'int64');
+                    data_ptr = libpointer('int64Ptr', data);
+                    [~, data] = DAEC.call('get_int64_array_from_voidptr', val_ptr, numel, data_ptr);
+                    data = int64(data);
+                case DAEC.enums.type_t.type_unsigned
+                    data = zeros(axis1_length, axis2_length, 'uint64');
+                    data_ptr = libpointer('uint64Ptr', data);
+                    [~, data] = DAEC.call('get_uint64_array_from_voidptr', val_ptr, numel, data_ptr);
+                    data = uint64(data);
+                case DAEC.enums.type_t.type_string
+                    error("Reading a vector/matrix of strings is not supported...")
+                case DAEC.enums.type_t.type_complex
+                    parted_data = zeros(axis1_length, axis2_length*2, 'double');
+                    data_ptr = libpointer('doublePtr', parted_data);
+                    [~, parted_data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel*2, data_ptr);
+                    data = complex(parted_data(:,1:axis2_length), parted_data(:,(axis2_length+1):end));
+                otherwise
+                    error(sprintf('unsupported array type %s', eltype))
             end
         end
     end

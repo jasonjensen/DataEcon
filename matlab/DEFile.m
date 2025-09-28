@@ -135,12 +135,17 @@ classdef DEFile < handle
         end
 
         function obj = read(de, pid, name)
+            if nargin == 1
+                obj = read_id(de, 0);
+            else
             if nargin == 2
                 name = pid;
                 pid = 0;
             end
+                
             id = find_object(de, pid, name);
             obj = read_id(de, id);
+            end
         end
 
         function obj = read_id(de, id)
@@ -155,10 +160,57 @@ classdef DEFile < handle
             [~, obj_t] = DAEC.check_call('de_load_object', de.ptr, id, objectPtr);
             % now get the value
             switch DAEC.enums.class_t.(obj_t.obj_class)
+                case DAEC.enums.class_t.class_catalog
+                    obj = struct();
+                    fields = list_catalog(de, obj_t.id);
+                    for i = 1:length(fields)
+                        sub_obj = fields(i);
+                        obj.(sub_obj.name) = read_id(de, sub_obj.id);
+                    end
+                    % obj = retrieve_scalar(de, obj_t);
                 case DAEC.enums.class_t.class_scalar
                     obj = retrieve_scalar(de, obj_t);
+                case DAEC.enums.class_t.class_vector
+                    obj = retrieve_vector(de, obj_t);
+                case DAEC.enums.class_t.class_matrix
+                    obj = retrieve_matrix(de, obj_t);
                 otherwise
                     error('unknown object class')
+            end           
+        end
+
+        function write(de, name, val, pid)
+            if nargin == 2
+                % structure passed, store as parent catalog
+                val = name;
+                name = '';
+                pid = 0;
+            end
+            if nargin == 3
+                pid = 0
+            end
+
+            if isa(val, 'struct')
+                new_pid = pid;
+                if length(name) > 0
+                    % make catalog object
+                    de.ensure_writeable(name);
+                    id_ptr = libpointer('int64Ptr', 0);
+                    [~, ~, new_pid] = DAEC.check_call('de_new_catalog', de.ptr, pid, char(name), id_ptr);
+                end
+                for f = fieldnames(val)'
+                    write(de, f{1}, val.(f{1}), new_pid);
+                end
+            elseif isscalar(val)
+                [~] = store_scalar(de, name, val, pid);
+            elseif isvector(val) && ~ischar(val) && ~isstring(val) && size(val,2) == 1
+                [~] = store_matrix(de, name, val, pid);
+            elseif ismatrix(val) && (isnumeric(val) || islogical(val))
+                [~] = store_matrix(de, name, val, pid);
+            elseif ischar(val) || isstring(val)
+                [~] = store_scalar(de, name, val, pid);
+            else
+                warning(sprintf('Skipping writing of %s. Unsupported type.\n', name))
             end           
         end
 
@@ -206,8 +258,88 @@ classdef DEFile < handle
             id_ptr = libpointer('int64Ptr', 0);
             [type, freq, val_ptr, nbytes] = DAEC.prepare_scalar(value);
 
-
             [~, ~, ~, id] = DAEC.check_call('de_store_scalar', de.ptr, pid, char(name), type, freq, nbytes, val_ptr, id_ptr);
+
+        end
+
+        function val = retrieve_vector(de, obj_t)
+            tseries_struct = libstruct('tseries_t');
+            axis_struct = libstruct('axis_t');
+            tseries_struct.object = obj_t;
+            tseries_struct.axis = axis_struct;
+            tseries_ptr = libpointer('tseries_t', tseries_struct);
+
+            [~, tseries_t] = DAEC.check_call('de_load_tseries', de.ptr, obj_t.id, tseries_ptr);
+            
+            data = DAEC.extract_array_data(tseries_t.value, DAEC.enums.type_t.(tseries_t.eltype), tseries_t.axis.length, 1);
+            
+            switch  DAEC.enums.axis_type_t.(tseries_t.axis.ax_type)
+                case DAEC.enums.axis_type_t.axis_plain
+                    val = data;
+                case DAEC.enums.axis_type_t.axis_range
+                    % todo: make tseries
+                    val = data;
+                case DAEC.enums.axis_type_t.axis_names
+                    % todo: make something
+                    val = data;
+                otherwise 
+                    error(sprintf('unsupported axis type type %s', tseries_t.axis.ax_type))
+            end
+        end
+
+        function val = retrieve_matrix(de, obj_t)
+            mvtseries_struct = libstruct('mvtseries_t');
+            axis1_struct = libstruct('axis_t');
+            axis2_struct = libstruct('axis_t');
+            mvtseries_struct.object = obj_t;
+            mvtseries_struct.axis1 = axis1_struct;
+            mvtseries_struct.axis2 = axis2_struct;
+            mvtseries_ptr = libpointer('mvtseries_t', mvtseries_struct);
+
+            [~, mvtseries_t] = DAEC.check_call('de_load_mvtseries', de.ptr, obj_t.id, mvtseries_ptr);
+            
+            data = DAEC.extract_array_data(mvtseries_t.value, DAEC.enums.type_t.(mvtseries_t.eltype), mvtseries_t.axis1.length, mvtseries_t.axis2.length);
+
+            switch  DAEC.enums.axis_type_t.(mvtseries_t.axis1.ax_type)
+                case DAEC.enums.axis_type_t.axis_plain
+                    val = data;
+                case DAEC.enums.axis_type_t.axis_range
+                    % todo: make mvtseries
+                    val = data;
+                case DAEC.enums.axis_type_t.axis_names
+                    % todo: make something
+                    val = data;
+                otherwise 
+                    error(sprintf('unsupported axis type type %s', mvtseries_t.axis1.ax_type))
+            end
+        end
+
+        function id = store_matrix(de, name, value, pid)
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [eltype, freq, val_ptr, nbytes] = DAEC.prepare_scalar(value(:));
+            
+            val_size = size(value);
+            if val_size(2) == 1
+                % vector
+                axis_id = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(1), 1);
+                [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_vector, eltype, freq, axis_id, nbytes, val_ptr, id_ptr);
+            elseif length(val_size) == 2
+                % matrix
+                axis_id1 = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(1), 1);
+                axis_id2 = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(2), 1);
+                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_matrix, eltype, freq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+            else
+                error('Too many dimensions!')
+            end
+            % type = DAEC.enums.class_t.class_vector;
+            
+
 
         end
     end
@@ -224,6 +356,15 @@ classdef DEFile < handle
 
             if ~ischar(name) && ~isstring(name)
                 error(sprintf('Object name must be a string or char array.'))
+            end
+        end
+
+        function axis_id = create_axis(de, freq, len, start_val)
+            axis_id_ptr = libpointer('int64Ptr', int64(0));
+            if freq == DAEC.enums.frequency_t.freq_none
+                [~, axis_id] = DAEC.check_call('de_axis_plain', de.ptr, int64(len), axis_id_ptr);
+            else
+                [~, axis_id] = DAEC.check_call('de_axis_range', de.ptr, int64(len), freq, int64(start_val), axis_id_ptr);
             end
         end
 

@@ -281,7 +281,7 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_plain
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
-                    val = TSeries(MIT(DAEC.enums.frequency_t.(tseries_t.axis.frequency), tseries_t.axis.first), data);
+                    val = DAECSeries(DAECAxis(tseries_t.axis), data);
                 case DAEC.enums.axis_type_t.axis_names
                     % todo: make something
                     val = data;
@@ -307,9 +307,7 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_plain
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
-                    % todo: make mvtseries
-                    unpacked_names = DAEC.unpack_column_names(mvtseries_t.axis2.names, mvtseries_t.axis2.length);
-                    val = MVTSeries(MIT(DAEC.enums.frequency_t.(mvtseries_t.axis1.frequency), mvtseries_t.axis1.first), unpacked_names, data);
+                    val = DAECSeries([DAECAxis(mvtseries_t.axis1), DAECAxis(mvtseries_t.axis2)], data);
                 case DAEC.enums.axis_type_t.axis_names
                     % todo: make something
                     val = data;
@@ -366,6 +364,31 @@ classdef DEFile < handle
                 % mvtseries
                 axis_id1 = de.create_axis(value.start.frequency, val_size(1), value.start.value);
                 axis_id2 = de.create_names_axis(value.names);
+                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+            else
+                error('Too many dimensions!')
+            end
+            % type = DAEC.enums.class_t.class_vector;
+        end       
+
+        function id = store_daecseries(de, name, series, pid)
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.value(:));
+            
+            if numel(series.axis) == 1 && series.axis(1).ax_type == DAEC.enums.axis_type_t.axis_range; 
+                % tseries
+                axis_id = de.create_axis(series.axis(1).frequency, series.axis(1).length, series.axis(1).first);
+                [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
+            elseif numel(series.axis) == 2 && series.axis(1).ax_type == DAEC.enums.axis_type_t.axis_range && series.axis(2).ax_type == DAEC.enums.axis_type_t.axis_names
+                % mvtseries
+                axis_id1 = de.create_axis(series.axis(1).frequency, series.axis(1).length, series.axis(1).first);
+                axis_id2 = de.create_names_axis(series.axis(2).names);
                 [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
             else
                 error('Too many dimensions!')

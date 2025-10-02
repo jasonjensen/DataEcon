@@ -160,6 +160,14 @@ const char *_get_statement_sql(stmt_name_t stmt_name)
         return "SELECT `id`, `eltype`, `elfreq`, `axis1_id`, `axis2_id`, `value` FROM `mvtseries` WHERE `id` = ?;";
     case stmt_load_ndtseries:
         return "SELECT `id`, `eltype`, `elfreq`, `value` FROM `ndtseries` WHERE `id` = ?;";
+    case stmt_load_ndtseries_value:
+        return "SELECT `id`, `value` FROM `ndtseries` WHERE `id` = ?;";
+    case stmt_load_ndtseries_eltype_elfreq:
+        return "SELECT `id`, `eltype`, `elfreq` FROM `ndtseries` WHERE `id` = ?;";
+    case stmt_load_ndaxes_ids:
+        return "SELECT `axes`.`id`, `ndaxes`.`axis_index`"
+               "FROM `ndaxes` LEFT JOIN `axes` ON `ndaxes`.`axis_id` = `axes`.`id` "
+               "WHERE `ndaxes`.`obj_id` = ? ORDER BY `ndaxes`.`axis_index`";
     case stmt_load_ndaxes:
         return "SELECT `axes`.*, `ndaxes`.`axis_index` "
                "FROM `ndaxes` LEFT JOIN `axes` ON `ndaxes`.`axis_id` = `axes`.`id` "

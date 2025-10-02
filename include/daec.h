@@ -367,6 +367,12 @@ extern "C"
     /* load a Nd-array object by name from a given parent catalog */
     int de_load_ndtseries(de_file de, obj_id_t id, ndtseries_t *ndtseries);
 
+    int de_load_ndtseries_axis_ids(de_file de, obj_id_t id, axis_id_t *axis_ids);
+
+    int de_load_ndtseries_value(de_file de, obj_id_t id, void **value);
+
+    int de_load_ndtseries_eltype_elfreq(de_file de, obj_id_t id, type_t *eltype, frequency_t *elfreq);
+
     /* ***************************** misc **************************************** */
 
     /*

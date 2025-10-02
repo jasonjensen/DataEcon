@@ -628,6 +628,38 @@ int _sql_load_ndaxes(de_file de, ndtseries_t *ndtseries)
     }
 }
 
+int sql_load_ndaxes_ids(de_file de, obj_id_t obj_id, axis_id_t *axes_ids)
+{
+    sqlite3_stmt *stmt = _get_statement(de, stmt_load_ndaxes_ids);
+    if (stmt == NULL)
+        return trace_error();
+    int rc;
+    int results_n;
+    CHECK_SQLITE(sqlite3_reset(stmt));
+    CHECK_SQLITE(sqlite3_bind_int64(stmt, 1, obj_id));
+    for (int n = 0; n < DE_MAX_AXES; ++n)
+    {
+        axes_ids[n] = -1;
+    }
+    results_n = 0;
+    while (1)
+    {
+        switch ((rc = sqlite3_step(stmt)))
+        {
+        case SQLITE_ROW:
+        {
+            axes_ids[results_n] = sqlite3_column_int64(stmt, 0);
+            ++results_n;
+            break;
+        }
+        case SQLITE_DONE:
+            return DE_SUCCESS;
+        default:
+            return rc_error(rc);
+        }
+    }
+}
+
 int sql_load_ndtseries_value(de_file de, obj_id_t id, ndtseries_t *ndtseries)
 {
     sqlite3_stmt *stmt = _get_statement(de, stmt_load_ndtseries);
@@ -648,6 +680,48 @@ int sql_load_ndtseries_value(de_file de, obj_id_t id, ndtseries_t *ndtseries)
         return rc_error(rc);
     }
 }
+
+int sql_load_ndtseries_value_field(de_file de, obj_id_t id, void **value)
+{
+    sqlite3_stmt *stmt = _get_statement(de, stmt_load_ndtseries_value);
+    if (stmt == NULL)
+        return trace_error();
+    int rc;
+    CHECK_SQLITE(sqlite3_reset(stmt));
+    CHECK_SQLITE(sqlite3_bind_int64(stmt, 1, id));
+    switch ((rc = sqlite3_step(stmt)))
+    {
+    case SQLITE_ROW:
+        *value = sqlite3_column_blob(stmt, 1);
+        return DE_SUCCESS;
+    case SQLITE_DONE:
+        return error(DE_BAD_OBJ);
+    default:
+        return rc_error(rc);
+    }
+}
+
+int sql_load_ndtseries_eltype_elfreq(de_file de, obj_id_t id, type_t *eltype, frequency_t *elfreq)
+{
+    sqlite3_stmt *stmt = _get_statement(de, stmt_load_ndtseries_eltype_elfreq);
+    if (stmt == NULL)
+        return trace_error();
+    int rc;
+    CHECK_SQLITE(sqlite3_reset(stmt));
+    CHECK_SQLITE(sqlite3_bind_int64(stmt, 1, id));
+    switch ((rc = sqlite3_step(stmt)))
+    {
+    case SQLITE_ROW:
+        *eltype = sqlite3_column_int(stmt, 1);
+        *elfreq = sqlite3_column_int(stmt, 2);
+        return DE_SUCCESS;
+    case SQLITE_DONE:
+        return error(DE_BAD_OBJ);
+    default:
+        return rc_error(rc);
+    }
+}
+
 
 /**************************************************************/
 /* count */

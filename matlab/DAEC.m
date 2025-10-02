@@ -133,7 +133,7 @@ classdef DAEC < handle
     end
 
     methods (Static) % write helpers
-         function [type, freq, val_ptr, nbytes] = prepare_scalar(value)
+        function [type, freq, val_ptr, nbytes] = prepare_scalar(value)
             nvals = numel(value);
             freq = DAEC.enums.frequency_t.freq_none;
             nbytes = nvals * 8;
@@ -191,20 +191,24 @@ classdef DAEC < handle
     end
 
     methods (Static) % read helpers
-        function data = extract_array_data(val_ptr, eltype, axis1_length, axis2_length)
-            numel = axis1_length*axis2_length;
+        function data = extract_array_data(val_ptr, eltype, data_shape)
+            numel = prod(data_shape);
             switch eltype
                 case DAEC.enums.type_t.type_float
-                    data = zeros(axis1_length, axis2_length, 'double');
+                    data = zeros(data_shape, 'double');
                     data_ptr = libpointer('doublePtr', data);
                     [~, data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel, data_ptr);
+                    data = double(data);
+                    if length(data_shape) > 2
+                        data = reshape(data, data_shape);
+                    end
                 case DAEC.enums.type_t.type_signed
-                    data = zeros(axis1_length, axis2_length, 'int64');
+                    data = zeros(data_shape, 'int64');
                     data_ptr = libpointer('int64Ptr', data);
                     [~, data] = DAEC.call('get_int64_array_from_voidptr', val_ptr, numel, data_ptr);
                     data = int64(data);
                 case DAEC.enums.type_t.type_unsigned
-                    data = zeros(axis1_length, axis2_length, 'uint64');
+                    data = zeros(data_shape, 'uint64');
                     data_ptr = libpointer('uint64Ptr', data);
                     [~, data] = DAEC.call('get_uint64_array_from_voidptr', val_ptr, numel, data_ptr);
                     data = uint64(data);

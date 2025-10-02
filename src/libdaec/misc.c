@@ -129,3 +129,73 @@ int de_unpack_strings(const char *buffer, int64_t bufsize, const char **strvec, 
     }
     return DE_SUCCESS;
 }
+
+/* functions for extracting values from void pointers */
+double get_double_from_voidptr(const void* p) {
+    const double* pd = (const double*)p;
+    return *pd;
+}
+int64_t get_int64_from_voidptr(const void* p) {
+    const int64_t* pi = (const int64_t*)p;
+    return *pi;
+}
+uint64_t get_uint64_from_voidptr(const void* p) {
+    const uint64_t* pu = (const uint64_t*)p;
+    return *pu;
+}
+/* matlab will handle the string pointer */
+const char* get_string_from_voidptr(const void* p) {
+    const char* ps = (const char*)p;
+    return ps;
+}
+double get_complex_real_from_voidptr(const void* p) {
+    const double* pc = (const double*)p;
+    return pc[0];  // Real part is first element
+}
+double get_complex_imag_from_voidptr(const void* p) {
+    const double* pc = (const double*)p;
+    return pc[1];  // Imaginary part is second element
+}
+double get_double_from_voidptr_offset(const void* p, size_t byte_offset) {
+    const char* base = (const char*)p;
+    const double* pd = (const double*)(base + byte_offset);
+    return *pd;
+}
+int64_t get_int64_from_voidptr_offset(const void* p, size_t byte_offset) {
+    const char* base = (const char*)p;
+    const int64_t* pi = (const int64_t*)(base + byte_offset);
+    return *pi;
+}
+uint64_t get_uint64_from_voidptr_offset(const void* p, size_t byte_offset) {
+    const char* base = (const char*)p;
+    const uint64_t* pu = (const uint64_t*)(base + byte_offset);
+    return *pu;
+}
+int32_t get_int32_from_voidptr(const void* p) {
+    const int32_t* pi = (const int32_t*)p;
+    return *pi;
+}
+signed char get_char_from_voidptr(const void* p) {
+    const signed char* pc = (const signed char*)p;
+    return *pc;
+}
+/* array extractors using memcpy to copy to pre-allocated output array */
+// Copy array of double values from void pointer to pre-allocated output array
+void get_double_array_from_voidptr(const void* p, size_t length, double* output) {
+    if (p == NULL || output == NULL || length == 0) {
+        return;  // Safe handling of invalid inputs
+    }
+    memcpy(output, p, length * sizeof(double));
+}
+void get_int64_array_from_voidptr(const void* p, size_t length, int64_t* output) {
+    if (p == NULL || output == NULL || length == 0) {
+        return;  // Safe handling of invalid inputs
+    }
+    memcpy(output, p, length * sizeof(int64_t));
+}
+void get_uint64_array_from_voidptr(const void* p, size_t length, uint64_t* output) {
+    if (p == NULL || output == NULL || length == 0) {
+        return;  // Safe handling of invalid inputs
+    }
+    memcpy(output, p, length * sizeof(uint64_t));
+}

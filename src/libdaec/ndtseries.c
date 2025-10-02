@@ -49,3 +49,30 @@ int de_load_ndtseries(de_file de, obj_id_t id, ndtseries_t *ndtseries)
     TRACE_RUN(sql_load_ndtseries_value(de, id, ndtseries));
     return DE_SUCCESS;
 }
+
+int de_load_ndtseries_axis_ids(de_file de, obj_id_t id, axis_id_t *axis_ids)
+{
+    if (de == NULL)
+        return error(DE_NULL);
+    TRACE_RUN(sql_load_ndaxes_ids(de, id, axis_ids));
+       
+    return DE_SUCCESS;
+}
+
+int de_load_ndtseries_eltype_elfreq(de_file de, obj_id_t id, type_t *eltype, frequency_t *elfreq)
+{
+    if (de == NULL)
+        return error(DE_NULL);
+    TRACE_RUN(sql_load_ndtseries_eltype_elfreq(de, id, eltype, elfreq));
+       
+    return DE_SUCCESS;
+}
+
+int de_load_ndtseries_value(de_file de, obj_id_t id, void **value)
+{
+    if (de == NULL)
+        return error(DE_NULL);
+    TRACE_RUN(sql_load_ndtseries_value_field(de, id, value));
+       
+    return DE_SUCCESS;
+}

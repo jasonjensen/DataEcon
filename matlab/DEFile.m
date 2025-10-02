@@ -138,13 +138,13 @@ classdef DEFile < handle
             if nargin == 1
                 obj = read_id(de, 0);
             else
-            if nargin == 2
-                name = pid;
-                pid = 0;
-            end
+                if nargin == 2
+                    name = pid;
+                    pid = 0;
+                end
                 
-            id = find_object(de, pid, name);
-            obj = read_id(de, id);
+                id = find_object(de, pid, name);
+                obj = read_id(de, id);
             end
         end
 
@@ -174,6 +174,8 @@ classdef DEFile < handle
                     obj = retrieve_vector(de, obj_t);
                 case DAEC.enums.class_t.class_matrix
                     obj = retrieve_matrix(de, obj_t);
+                case DAEC.enums.class_t.class_ndtseries
+                    obj = retrieve_ndarray(de, obj_t);
                 otherwise
                     error('unknown object class')
             end           
@@ -201,6 +203,8 @@ classdef DEFile < handle
                 for f = fieldnames(val)'
                     write(de, f{1}, val.(f{1}), new_pid);
                 end
+            elseif(isa(val, 'DAECSeries'))
+                 [~] = store_daecseries(de, name, val, pid);
             elseif(isa(val, 'TSeries'))
                 [~] = store_tseries(de, name, val, pid);
             elseif(isa(val, 'MVTSeries'))
@@ -209,13 +213,13 @@ classdef DEFile < handle
                 [~] = store_scalar(de, name, val, pid);
             elseif isvector(val) && ~ischar(val) && ~isstring(val) && size(val,2) == 1
                 [~] = store_matrix(de, name, val, pid);
-            elseif ismatrix(val) && (isnumeric(val) || islogical(val))
+            elseif isnumeric(val) || islogical(val)
                 [~] = store_matrix(de, name, val, pid);
             elseif ischar(val) || isstring(val)
                 [~] = store_scalar(de, name, val, pid);
             else
                 warning(sprintf('Skipping writing of %s. Unsupported type.\n', name))
-            end           
+            end
         end
 
         function val = retrieve_scalar(de, obj_t)
@@ -275,8 +279,12 @@ classdef DEFile < handle
 
             [~, tseries_t] = DAEC.check_call('de_load_tseries', de.ptr, obj_t.id, tseries_ptr);
             
-            data = DAEC.extract_array_data(tseries_t.value, DAEC.enums.type_t.(tseries_t.eltype), tseries_t.axis.length, 1);
+            data_shape = [tseries_t.axis.length 1];
+
+            data = DAEC.extract_array_data(tseries_t.value, DAEC.enums.type_t.(tseries_t.eltype), data_shape);
             
+            % TODO: use elfreq
+
             switch  DAEC.enums.axis_type_t.(tseries_t.axis.ax_type)
                 case DAEC.enums.axis_type_t.axis_plain
                     val = data;
@@ -300,8 +308,12 @@ classdef DEFile < handle
             mvtseries_ptr = libpointer('mvtseries_t', mvtseries_struct);
 
             [~, mvtseries_t] = DAEC.check_call('de_load_mvtseries', de.ptr, obj_t.id, mvtseries_ptr);
+
+            data_shape = [mvtseries_t.axis1.length mvtseries_t.axis2.length];
             
-            data = DAEC.extract_array_data(mvtseries_t.value, DAEC.enums.type_t.(mvtseries_t.eltype), mvtseries_t.axis1.length, mvtseries_t.axis2.length);
+            data = DAEC.extract_array_data(mvtseries_t.value, DAEC.enums.type_t.(mvtseries_t.eltype), data_shape);
+            
+            % TODO: use elfreq
 
             switch  DAEC.enums.axis_type_t.(mvtseries_t.axis1.ax_type)
                 case DAEC.enums.axis_type_t.axis_plain
@@ -313,6 +325,51 @@ classdef DEFile < handle
                     val = data;
                 otherwise 
                     error(sprintf('unsupported axis type type %s', mvtseries_t.axis1.ax_type))
+            end
+        end
+
+        function val = retrieve_ndarray(de, obj_t)
+
+            % get axis ids
+            axis_ids_ptr = libpointer('int64Ptr', [0 0 0 0 0]);
+            [~, axis_ids, ] = DAEC.check_call('de_load_ndtseries_axis_ids', de.ptr, obj_t.id, axis_ids_ptr);
+
+            % load axes
+            axis = DAECAxis.empty;
+            data_shape = [];
+            non_plain = false;
+            for i = 1:length(axis_ids)
+                if axis_ids(i) == -1
+                    break;
+                end
+                axis_struct = libstruct('axis_t');
+                axis_struct.ax_type = int32(0);
+                axis_struct.frequency = int32(0);
+                axis_ptr = libpointer('axis_t', axis_struct);
+                [~, axis_t] = DAEC.check_call('de_load_axis', de.ptr, axis_ids(i), axis_ptr);
+                axis(i) = DAECAxis(axis_t);
+                if axis(i).ax_type ~= DAEC.enums.axis_type_t.axis_plain
+                    non_plain = true;
+                end
+                data_shape(1, i) = axis(i).length;
+            end
+            
+            % get eltype, elfreq
+            eltype_ptr = libpointer('type_t', 0);
+            elfreq_ptr = libpointer('frequency_t', 0);
+            [~, eltype, elfreq] = DAEC.check_call('de_load_ndtseries_eltype_elfreq', de.ptr, obj_t.id, eltype_ptr, elfreq_ptr);
+
+            % get value
+            value_ptr = libpointer('voidPtrPtr', 0);
+            [~, value] = DAEC.check_call('de_load_ndtseries_value_field', de.ptr, obj_t.id, value_ptr);
+            data = DAEC.extract_array_data(value_ptr, DAEC.enums.type_t.(eltype), data_shape);
+
+            % TODO: use elfreq
+            
+            if non_plain
+                val = DAECSeries(axis, data);
+            else
+                val = data;
             end
         end
 
@@ -336,8 +393,16 @@ classdef DEFile < handle
                 axis_id1 = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(1), 1);
                 axis_id2 = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(2), 1);
                 [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_matrix, eltype, freq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
-            else
-                error('Too many dimensions!')
+            else                
+                naxes = length(val_size);
+                axis_ids = [];
+                for i = 1:naxes
+                    axis_ids(i) = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(i), 1);
+                end
+                axis_ids_ptr = libpointer('int64Ptr', int64(axis_ids(:)));
+                [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(value(:));
+                % TODO: store as type_tensor
+                [~, ~, ~, ~, id] = DAEC.check_call('de_store_ndtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_ndtseries, eltype, elfreq, naxes, axis_ids_ptr, nbytes, val_ptr, id_ptr);
             end
             % type = DAEC.enums.class_t.class_vector;
             
@@ -360,11 +425,6 @@ classdef DEFile < handle
                 % tseries
                 axis_id = de.create_axis(value.start.frequency, val_size(1), value.start.value);
                 [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
-            elseif length(val_size) == 2
-                % mvtseries
-                axis_id1 = de.create_axis(value.start.frequency, val_size(1), value.start.value);
-                axis_id2 = de.create_names_axis(value.names);
-                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
             else
                 error('Too many dimensions!')
             end
@@ -379,19 +439,31 @@ classdef DEFile < handle
             de.ensure_writeable(name);
 
             id_ptr = libpointer('int64Ptr', 0);
-            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.value(:));
             
             if numel(series.axis) == 1 && series.axis(1).ax_type == DAEC.enums.axis_type_t.axis_range; 
                 % tseries
+                [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.value(:));
                 axis_id = de.create_axis(series.axis(1).frequency, series.axis(1).length, series.axis(1).first);
                 [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
             elseif numel(series.axis) == 2 && series.axis(1).ax_type == DAEC.enums.axis_type_t.axis_range && series.axis(2).ax_type == DAEC.enums.axis_type_t.axis_names
                 % mvtseries
                 axis_id1 = de.create_axis(series.axis(1).frequency, series.axis(1).length, series.axis(1).first);
                 axis_id2 = de.create_names_axis(series.axis(2).names);
+                [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.value(:));
                 [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
             else
-                error('Too many dimensions!')
+                naxes = numel(series.axis);
+                axis_ids = [];
+                for i = 1:naxes
+                    if series.axis(i).ax_type == DAEC.enums.axis_type_t.axis_names
+                        axis_ids(i) = de.create_names_axis(series.axis(i).names);
+                    else
+                        axis_ids(i) = de.create_axis(series.axis(i).frequency, series.axis(i).length, series.axis(i).first);
+                    end
+                end
+                axis_ids_ptr = libpointer('int64Ptr', int64(axis_ids(:)));
+                [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.value(:));
+                [~, ~, ~, ~, id] = DAEC.check_call('de_store_ndtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_ndtseries, eltype, elfreq, naxes, axis_ids_ptr, nbytes, val_ptr, id_ptr);
             end
             % type = DAEC.enums.class_t.class_vector;
         end       
@@ -426,7 +498,7 @@ classdef DEFile < handle
             names_packed = DAEC.pack_column_names(names);
             [~, ~, axis_id] = DAEC.check_call('de_axis_names', de.ptr, int64(numel(names)), names_packed, axis_id_ptr);
         end
-       
+  
     end
 
 end

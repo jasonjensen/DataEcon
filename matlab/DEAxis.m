@@ -1,5 +1,5 @@
-classdef DAECAxis < handle
-% MIT - Moment-In-Time class for DataEcon date representation
+classdef DEAxis < handle
+% DEAxis - Axis class for DataEcon series
 
     properties (Access = public)
         ax_type {mustBeInteger, mustBeNonnegative} = DAEC.enums.axis_type_t.axis_plain
@@ -10,7 +10,7 @@ classdef DAECAxis < handle
     end
 
     methods
-        function obj = DAECAxis(varargin)
+        function obj = DEAxis(varargin)
             if nargin == 4
                 obj.ax_type = varargin{1};
                 obj.frequency = varargin{2};
@@ -21,7 +21,7 @@ classdef DAECAxis < handle
                     obj.first = varargin{4};
                 end
             elseif nargin == 2
-                if isa(varargin{1}, 'MIT')
+                if isa(varargin{1}, 'DEDate')
                     obj.ax_type = DAEC.enums.axis_type_t.axis_range;
                     obj.frequency = varargin{1}.frequency;
                     obj.first = varargin{1}.value;

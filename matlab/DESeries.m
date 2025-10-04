@@ -1,8 +1,8 @@
-classdef DAECSeries < handle
-% MIT - Moment-In-Time class for DataEcon date representation
+classdef DESeries < handle
+% DESeries - Time series class for DataEcon
 
     properties (Access = public)
-        axis {mustBeA(axis, 'DAECAxis')} = DAECAxis(0,0,0,0)
+        axis {mustBeA(axis, 'DEAxis')} = DEAxis(0,0,0,0)
         value {mustBeA(value, ["double", "int64", "uint64", "logical", "MIT"])} = []
     end
 
@@ -13,7 +13,7 @@ classdef DAECSeries < handle
     end
 
     methods
-        function obj = DAECSeries(varargin)
+        function obj = DESeries(varargin)
 
             % Default initialization
             obj.axis = varargin{1};

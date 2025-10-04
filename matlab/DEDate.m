@@ -1,5 +1,5 @@
-classdef MIT < handle
-% MIT - Moment-In-Time class for DataEcon date representation
+classdef DEDate < handle
+% DEDate - Moment-In-Date class for DataEcon date representation
 
     properties (Access = public)
         frequency   % DataEcon frequency type (integer from Constants)
@@ -7,14 +7,14 @@ classdef MIT < handle
     end
 
     methods
-        function obj = MIT(varargin)
+        function obj = DEDate(varargin)
 
             % Default initialization
             obj.frequency = DAEC.enums.frequency_t.freq_none;
             obj.value = 0;
             
             if nargin == 0
-                return; % Empty MIT
+                return; % Empty DEDate
             end
 
             % TODO: error messages?

@@ -203,7 +203,7 @@ classdef DEFile < handle
                 for f = fieldnames(val)'
                     write(de, f{1}, val.(f{1}), new_pid);
                 end
-            elseif(isa(val, 'DAECSeries'))
+            elseif(isa(val, 'DESeries'))
                  [~] = store_daecseries(de, name, val, pid);
             elseif(isa(val, 'TSeries'))
                 [~] = store_tseries(de, name, val, pid);
@@ -289,7 +289,7 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_plain
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
-                    val = DAECSeries(DAECAxis(tseries_t.axis), data);
+                    val = DESeries(DEAxis(tseries_t.axis), data);
                 case DAEC.enums.axis_type_t.axis_names
                     % todo: make something
                     val = data;
@@ -319,7 +319,7 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_plain
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
-                    val = DAECSeries([DAECAxis(mvtseries_t.axis1), DAECAxis(mvtseries_t.axis2)], data);
+                    val = DESeries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
                 case DAEC.enums.axis_type_t.axis_names
                     % todo: make something
                     val = data;
@@ -335,7 +335,7 @@ classdef DEFile < handle
             [~, axis_ids, ] = DAEC.check_call('de_load_ndtseries_axis_ids', de.ptr, obj_t.id, axis_ids_ptr);
 
             % load axes
-            axis = DAECAxis.empty;
+            axis = DEAxis.empty;
             data_shape = [];
             non_plain = false;
             for i = 1:length(axis_ids)
@@ -347,7 +347,7 @@ classdef DEFile < handle
                 axis_struct.frequency = int32(0);
                 axis_ptr = libpointer('axis_t', axis_struct);
                 [~, axis_t] = DAEC.check_call('de_load_axis', de.ptr, axis_ids(i), axis_ptr);
-                axis(i) = DAECAxis(axis_t);
+                axis(i) = DEAxis(axis_t);
                 if axis(i).ax_type ~= DAEC.enums.axis_type_t.axis_plain
                     non_plain = true;
                 end
@@ -361,13 +361,13 @@ classdef DEFile < handle
 
             % get value
             value_ptr = libpointer('voidPtrPtr', 0);
-            [~, value] = DAEC.check_call('de_load_ndtseries_value_field', de.ptr, obj_t.id, value_ptr);
+            [~, value] = DAEC.check_call('de_load_ndtseries_value', de.ptr, obj_t.id, value_ptr);
             data = DAEC.extract_array_data(value_ptr, DAEC.enums.type_t.(eltype), data_shape);
 
             % TODO: use elfreq
             
             if non_plain
-                val = DAECSeries(axis, data);
+                val = DESeries(axis, data);
             else
                 val = data;
             end

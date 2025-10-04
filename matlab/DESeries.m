@@ -18,7 +18,33 @@ classdef DESeries < handle
             % Default initialization
             obj.axis = varargin{1};
             obj.value = varargin{2};
-            
+
+            % Validate dimensions match
+            naxes = numel(obj.axis);
+            dims = [];
+            for dim = size(obj.value)
+                if dim > 1
+                    dims = [dims dim];
+                end
+            end
+
+            if length(dims) ~= naxes
+                error('DESeries:DimensionMismatch', ...
+                    'Value has %d dimensions but %d axes provided', length(dims), naxes);
+            end
+            for i = 1:naxes
+                if  dims(i) ~= obj.axis(i).length
+                    error('DESeries:DimensionMismatch', ...
+                            'Axis %d: expected length %d, got %d', ...
+                            i, obj.axis(i).length, dims(i));
+                end
+            end
+
+            % store 1d as column vectors
+            if naxes == 1 & (size(obj.value))(1) == 1
+                obj.value = obj.value'
+            end
+
         end
 
         function val = get.elfreq(obj)

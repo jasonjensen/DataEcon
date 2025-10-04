@@ -26,6 +26,11 @@ classdef DEAxis < handle
                     obj.frequency = varargin{1}.frequency;
                     obj.first = varargin{1}.value;
                     obj.length = varargin{2};
+                elseif isscalar(varargin{1}) && isscalar(varargin{2})
+                    obj.ax_type = DAEC.enums.axis_type_t.axis_plain;
+                    obj.frequency = DAEC.enums.frequency_t.freq_none;
+                    obj.first = varargin{1};
+                    obj.length = varargin{2};
                 end
             elseif nargin == 1
                 if isa(varargin{1}, 'struct')
@@ -40,6 +45,11 @@ classdef DEAxis < handle
                     obj.first = 0;
                     obj.length = numel(varargin{1});
                     obj.names = varargin{1};
+                 elseif isa(varargin{1}, 'double') && isvector(varargin{1})
+                    obj.ax_type = DAEC.enums.axis_type_t.axis_plain;
+                    obj.frequency = DAEC.enums.frequency_t.freq_none;
+                    obj.first = varargin{1}(1);
+                    obj.length = length(varargin{1}); % assuming all the numbers are sequential!
                 else
                     error('Invalid input.')
                 end

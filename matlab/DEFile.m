@@ -205,10 +205,6 @@ classdef DEFile < handle
                 end
             elseif(isa(val, 'DESeries'))
                  [~] = store_daecseries(de, name, val, pid);
-            elseif(isa(val, 'TSeries'))
-                [~] = store_tseries(de, name, val, pid);
-            elseif(isa(val, 'MVTSeries'))
-                [~] = store_tseries(de, name, val, pid);
             elseif isscalar(val)
                 [~] = store_scalar(de, name, val, pid);
             elseif isvector(val) && ~ischar(val) && ~isstring(val) && size(val,2) == 1
@@ -227,7 +223,6 @@ classdef DEFile < handle
             scalarStruct.object = obj_t;
             scalarPtr = libpointer('scalar_t', scalarStruct);
             [~, scalar_t] = DAEC.check_call('de_load_scalar', de.ptr, obj_t.id, scalarPtr);
-
             switch DAEC.enums.type_t.(obj_t.obj_type)
                 case DAEC.enums.type_t.type_float
                     val = DAEC.call('get_double_from_voidptr', scalar_t.value);

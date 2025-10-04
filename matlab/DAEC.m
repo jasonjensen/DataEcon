@@ -215,10 +215,20 @@ classdef DAEC < handle
                 case DAEC.enums.type_t.type_string
                     error("Reading a vector/matrix of strings is not supported...")
                 case DAEC.enums.type_t.type_complex
-                    parted_data = zeros(axis1_length, axis2_length*2, 'double');
+                    adjusted_data_shape = data_shape;
+                    adjusted_data_shape(end) = data_shape(end)*2;
+                    parted_data = zeros(adjusted_data_shape, 'double');
                     data_ptr = libpointer('doublePtr', parted_data);
                     [~, parted_data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel*2, data_ptr);
-                    data = complex(parted_data(:,1:axis2_length), parted_data(:,(axis2_length+1):end));
+                    parted_data = double(parted_data);
+                    if length(data_shape) > 2
+                        parted_data = reshape(parted_data, adjusted_data_shape);
+                    end
+                    real_idx = repmat({':'}, 1, length(data_shape));
+                    imag_idx = repmat({':'}, 1, length(data_shape));
+                    real_idx{end} = 1:data_shape(end); 
+                    imag_idx{end} = (data_shape(end)+1):(data_shape(end) * 2); 
+                    data = complex(parted_data(real_idx{:}), parted_data(imag_idx{:}));
                 otherwise
                     error(sprintf('unsupported array type %s', eltype))
             end

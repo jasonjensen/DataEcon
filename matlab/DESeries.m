@@ -41,8 +41,11 @@ classdef DESeries < handle
             end
 
             % store 1d as column vectors
-            if naxes == 1 & (size(obj.value))(1) == 1
-                obj.value = obj.value'
+            if naxes == 1 
+                size_ = size(obj.value);
+                if size_(1) == 1
+                    obj.value = obj.value';
+                end
             end
 
         end

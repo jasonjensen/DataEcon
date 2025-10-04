@@ -353,6 +353,9 @@ classdef DEFile < handle
                 end
                 data_shape(1, i) = axis(i).length;
             end
+            if length(data_shape) == 1
+                data_shape = [data_shape 1];
+            end
             
             % get eltype, elfreq
             eltype_ptr = libpointer('type_t', 0);

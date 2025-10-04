@@ -147,10 +147,25 @@ classdef DAEC < handle
                 case 2 % unsigned int
                     val_ptr = libpointer('int64Ptr', int64(value));
                 case 3 % date
-                    freq = DAEC.enums.frequency_t.freq_daily;
-                    [year, month, day] = ymd(value);
-                    date_ptr = libpointer('int64Ptr', int64(0));
-                    val_ptr = DAEC.check_call('de_pack_calendar_date', freq, int32(year), uint32(month), uint32(day), date_ptr);
+                    if isa(value, 'datetime')
+                        freq = DAEC.enums.frequency_t.freq_daily;
+                        [year, month, day] = ymd(value);
+                        date_ptr = libpointer('int64Ptr', int64(0));
+                        val_ptr = DAEC.check_call('de_pack_calendar_date', freq, int32(year), uint32(month), uint32(day), date_ptr);
+                    else
+                        % DEDate array - extract frequency and values
+                        freq = value(1).frequency;
+                        if nvals == 1
+                            vals = int64(value.value);
+                        else
+                            % Preallocate and extract values efficiently
+                            vals = zeros(size(value), 'int64');
+                            for i = 1:numel(value)
+                                vals(i) = value(i).value;
+                            end
+                        end
+                        val_ptr = libpointer('int64Ptr', vals);
+                    end
                 case 4 % double
                     if isreal(value)
                         val_ptr = libpointer('doublePtr', double(value));
@@ -207,6 +222,11 @@ classdef DAEC < handle
                     data_ptr = libpointer('int64Ptr', data);
                     [~, data] = DAEC.call('get_int64_array_from_voidptr', val_ptr, numel, data_ptr);
                     data = int64(data);
+                case DAEC.enums.type_t.type_date
+                    data = zeros(data_shape, 'int64');
+                    data_ptr = libpointer('int64Ptr', data);
+                    [~, data] = DAEC.call('get_int64_array_from_voidptr', val_ptr, numel, data_ptr);
+                    data = int64(data);
                 case DAEC.enums.type_t.type_unsigned
                     data = zeros(data_shape, 'uint64');
                     data_ptr = libpointer('uint64Ptr', data);
@@ -248,6 +268,19 @@ classdef DAEC < handle
             else
                 colnames = {names};
             end                
+        end
+
+        function data = to_date_array(data, elfreq, data_shape)
+            % Preallocate DEDate array with same shape as data
+            date_array(numel(data)) = DEDate();
+            date_array = reshape(date_array, data_shape);
+
+            % Populate with DEDate objects using vectorized approach
+            for i = 1:numel(data)
+                date_array(i) = DEDate(elfreq, data(i));
+            end
+
+            data = date_array;
         end
 
     end

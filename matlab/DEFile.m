@@ -251,6 +251,12 @@ classdef DEFile < handle
                     real_part = DAEC.call('get_complex_real_from_voidptr', scalar_t.value);
                     imag_part = DAEC.call('get_complex_imag_from_voidptr', scalar_t.value);
                     val = complex(real_part, imag_part);
+                case DAEC.enums.type_t.type_date
+                    val = int64(DAEC.call('get_int64_from_voidptr', scalar_t.value));
+                    freq = DAEC.enums.frequency_t.(scalar_t.frequency);
+                    if freq ~= DAEC.enums.frequency_t.freq_none
+                        val = DEDate(freq, val);
+                    end
                 otherwise
                     error(sprintf('unsupported scalar type %s', obj_t.obj_type))
             end

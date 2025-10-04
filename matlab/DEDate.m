@@ -63,10 +63,20 @@ classdef DEDate < handle
         end
 
         function dateStr = format(obj)
-            if obj.frequency == 0 
-                dateStr = sprintf('%d', obj.value)
+            % Handle array of DEDate objects
+            if numel(obj) > 1
+                dateStr = cell(size(obj));
+                for i = 1:numel(obj)
+                    dateStr{i} = format(obj(i));
+                end
+                return;
+            end
+
+            % Handle scalar DEDate
+            if obj.frequency == 0
+                dateStr = sprintf('%d', obj.value);
             elseif obj.frequency <= 11
-                dateStr = sprintf('%dU', obj.value)
+                dateStr = sprintf('%dU', obj.value);
             elseif obj.frequency < 32 % daily, bdaily, weekly
                 year_ptr = libpointer('int32Ptr', 0);
                 month_ptr = libpointer('uint32Ptr', 0);
@@ -96,7 +106,39 @@ classdef DEDate < handle
         end
 
         function disp(obj)
-            fprintf('%s\n', format(obj))
+            % Handle array of DEDate objects
+            if numel(obj) > 1
+                % Display as array with dimensions
+                dims = size(obj);
+                fprintf('%d', dims(1));
+                for i = 2:length(dims)
+                    fprintf('×%d', dims(i));
+                end
+                fprintf(' DEDate array:\n\n');
+
+                % For 1D arrays, display as list
+                if isvector(obj)
+                    for i = 1:numel(obj)
+                        fprintf('  %s\n', format(obj(i)));
+                    end
+                % For 2D arrays, display as grid
+                elseif ismatrix(obj)
+                    for i = 1:size(obj, 1)
+                        fprintf('  ');
+                        for j = 1:size(obj, 2)
+                            fprintf('%-12s  ', format(obj(i, j)));
+                        end
+                        fprintf('\n');
+                    end
+                else
+                    % For higher dimensions, just show size
+                    fprintf('  (Use indexing to view individual dates)\n');
+                end
+                fprintf('\n');
+            else
+                % Scalar case
+                fprintf('%s\n', format(obj));
+            end
         end
     end
 

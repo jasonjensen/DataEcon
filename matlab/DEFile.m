@@ -278,12 +278,14 @@ classdef DEFile < handle
             tseries_ptr = libpointer('tseries_t', tseries_struct);
 
             [~, tseries_t] = DAEC.check_call('de_load_tseries', de.ptr, obj_t.id, tseries_ptr);
-            
+            elfreq = DAEC.enums.frequency_t.(tseries_t.elfreq);
             data_shape = [tseries_t.axis.length 1];
 
             data = DAEC.extract_array_data(tseries_t.value, DAEC.enums.type_t.(tseries_t.eltype), data_shape);
             
-            % TODO: use elfreq
+            if elfreq ~= DAEC.enums.frequency_t.freq_none
+                data = DAEC.to_date_array(data, elfreq, data_shape);
+            end
 
             switch  DAEC.enums.axis_type_t.(tseries_t.axis.ax_type)
                 case DAEC.enums.axis_type_t.axis_plain
@@ -308,23 +310,21 @@ classdef DEFile < handle
             mvtseries_ptr = libpointer('mvtseries_t', mvtseries_struct);
 
             [~, mvtseries_t] = DAEC.check_call('de_load_mvtseries', de.ptr, obj_t.id, mvtseries_ptr);
+            elfreq = DAEC.enums.frequency_t.(mvtseries_t.elfreq);
 
             data_shape = [mvtseries_t.axis1.length mvtseries_t.axis2.length];
             
             data = DAEC.extract_array_data(mvtseries_t.value, DAEC.enums.type_t.(mvtseries_t.eltype), data_shape);
             
-            % TODO: use elfreq
+            if elfreq ~= DAEC.enums.frequency_t.freq_none
+                data = DAEC.to_date_array(data, elfreq, data_shape);
+            end
 
-            switch  DAEC.enums.axis_type_t.(mvtseries_t.axis1.ax_type)
-                case DAEC.enums.axis_type_t.axis_plain
-                    val = data;
-                case DAEC.enums.axis_type_t.axis_range
-                    val = DESeries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
-                case DAEC.enums.axis_type_t.axis_names
-                    % todo: make something
-                    val = data;
-                otherwise 
-                    error(sprintf('unsupported axis type type %s', mvtseries_t.axis1.ax_type))
+            if DAEC.enums.axis_type_t.(mvtseries_t.axis1.ax_type) == DAEC.enums.axis_type_t.axis_plain && DAEC.enums.axis_type_t.(mvtseries_t.axis2.ax_type) == DAEC.enums.axis_type_t.axis_plain
+                % both axes plain
+                val = data;
+            else
+                val = DESeries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             end
         end
 
@@ -360,15 +360,20 @@ classdef DEFile < handle
             % get eltype, elfreq
             eltype_ptr = libpointer('type_t', 0);
             elfreq_ptr = libpointer('frequency_t', 0);
-            [~, eltype, elfreq] = DAEC.check_call('de_load_ndtseries_eltype_elfreq', de.ptr, obj_t.id, eltype_ptr, elfreq_ptr);
+            [~, eltype_str, elfreq_str] = DAEC.check_call('de_load_ndtseries_eltype_elfreq', de.ptr, obj_t.id, eltype_ptr, elfreq_ptr);
 
+            eltype = DAEC.enums.type_t.(eltype_str);
+            elfreq = DAEC.enums.frequency_t.(elfreq_str);
+            
             % get value
             value_ptr = libpointer('voidPtrPtr', 0);
             [~, value] = DAEC.check_call('de_load_ndtseries_value', de.ptr, obj_t.id, value_ptr);
-            data = DAEC.extract_array_data(value_ptr, DAEC.enums.type_t.(eltype), data_shape);
+            data = DAEC.extract_array_data(value_ptr, eltype, data_shape);
 
-            % TODO: use elfreq
-            
+            if elfreq ~= DAEC.enums.frequency_t.freq_none
+                data = DAEC.to_date_array(data, elfreq, data_shape);
+            end
+
             if non_plain
                 val = DESeries(axis, data);
             else
@@ -384,18 +389,18 @@ classdef DEFile < handle
             de.ensure_writeable(name);
 
             id_ptr = libpointer('int64Ptr', 0);
-            [eltype, freq, val_ptr, nbytes] = DAEC.prepare_scalar(value(:));
+            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(value(:));
             
             val_size = size(value);
             if val_size(2) == 1
                 % vector
                 axis_id = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(1), 1);
-                [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_vector, eltype, freq, axis_id, nbytes, val_ptr, id_ptr);
+                [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_vector, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
             elseif length(val_size) == 2
                 % matrix
                 axis_id1 = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(1), 1);
                 axis_id2 = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(2), 1);
-                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_matrix, eltype, freq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_matrix, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
             else                
                 naxes = length(val_size);
                 axis_ids = [];
@@ -403,7 +408,6 @@ classdef DEFile < handle
                     axis_ids(i) = de.create_axis(DAEC.enums.frequency_t.freq_none, val_size(i), 1);
                 end
                 axis_ids_ptr = libpointer('int64Ptr', int64(axis_ids(:)));
-                [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(value(:));
                 % TODO: store as type_tensor
                 [~, ~, ~, ~, id] = DAEC.check_call('de_store_ndtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_ndtseries, eltype, elfreq, naxes, axis_ids_ptr, nbytes, val_ptr, id_ptr);
             end

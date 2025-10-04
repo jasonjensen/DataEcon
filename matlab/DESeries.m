@@ -3,7 +3,7 @@ classdef DESeries < handle
 
     properties (Access = public)
         axis {mustBeA(axis, 'DEAxis')} = DEAxis(0,0,0,0)
-        value {mustBeA(value, ["double", "int64", "uint64", "logical", "MIT"])} = []
+        value {mustBeA(value, ["double", "int64", "uint64", "logical", "DEDate"])} = []
     end
 
     properties (Dependent)
@@ -89,7 +89,11 @@ classdef DESeries < handle
                     fprintf('\n');
                     for i = 1:obj.axis(1).length
                         date = DEDate(obj.axis(1).frequency, obj.axis(1).first + i - 1);
-                        fprintf('  %s    %g\n', format(date), obj.value(i));
+                        if isa(obj.value(i), 'DEDate')
+                            fprintf('  %s    %s\n', format(date), format(obj.value(i)));
+                        else
+                            fprintf('  %s    %g\n', format(date), obj.value(i));
+                        end
                     end
                     fprintf('\n');
                 elseif obj.axis(1).ax_type == DAEC.enums.axis_type_t.axis_names
@@ -206,6 +210,16 @@ classdef DESeries < handle
         function display_2d_slice(~, slice_data, axis1, axis2)
             % Helper method to display a 2D slice based on axis types
 
+            % Convert DEDate arrays to formatted strings for table display
+            if isa(slice_data, 'DEDate')
+                display_data = cell(size(slice_data));
+                for i = 1:numel(slice_data)
+                    display_data{i} = format(slice_data(i));
+                end
+            else
+                display_data = slice_data;
+            end
+
             % Case: axis_range × axis_names (multivariate time series)
             if axis1.ax_type == DAEC.enums.axis_type_t.axis_range && ...
                axis2.ax_type == DAEC.enums.axis_type_t.axis_names
@@ -215,7 +229,7 @@ classdef DESeries < handle
                     date = DEDate(axis1.frequency, axis1.first + i - 1);
                     dates{i} = format(date);
                 end
-                T = array2table(slice_data, 'VariableNames', axis2.names, 'RowNames', dates);
+                T = array2table(display_data, 'VariableNames', axis2.names, 'RowNames', dates);
                 disp(T);
 
             % Case: axis_names × axis_range (transposed time series)
@@ -227,14 +241,14 @@ classdef DESeries < handle
                     date = DEDate(axis2.frequency, axis2.first + i - 1);
                     dates{i} = format(date);
                 end
-                T = array2table(slice_data, 'VariableNames', dates, 'RowNames', axis1.names);
+                T = array2table(display_data, 'VariableNames', dates, 'RowNames', axis1.names);
                 disp(T);
 
             % Case: axis_names × axis_names
             elseif axis1.ax_type == DAEC.enums.axis_type_t.axis_names && ...
                    axis2.ax_type == DAEC.enums.axis_type_t.axis_names
 
-                T = array2table(slice_data, 'VariableNames', axis2.names, 'RowNames', axis1.names);
+                T = array2table(display_data, 'VariableNames', axis2.names, 'RowNames', axis1.names);
                 disp(T);
 
             % Default: just display the numeric array

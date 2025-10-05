@@ -56,6 +56,13 @@ classdef DEDate < handle
                     val = DAEC.check_call('de_pack_calendar_date', obj.frequency, int32(varargin{2}),uint32(varargin{3}), uint32(varargin{4}), val_ptr);
                 end
                 obj.value=val;
+            elseif nargin == 2 && isscalar(varargin{1}) && isa(varargin{2}, 'datetime')
+                % numeric frequency and datetime object (i.e. for IRIS conversion)
+                obj.frequency = varargin{1};
+                val_ptr = libpointer('int64Ptr', 0);    
+                date_parts = datevec(varargin{2});
+                val = DAEC.check_call('de_pack_calendar_date', obj.frequency, int32(date_parts(1)), uint32(date_parts(2)), uint32(date_parts(3)), val_ptr);
+                obj.value=val;
             else
                 obj.frequency = varargin{1};
                 obj.value = varargin{2};

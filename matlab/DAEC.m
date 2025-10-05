@@ -17,6 +17,8 @@ classdef DAEC < handle
 
     properties (Constant)
         enums = daecenums(); % daecenums()
+        daec_to_iris_freq = get_daec_to_iris_freq_map();
+        iris_to_daec_freq = get_iris_to_daec_freq_map();
     end
 
     methods (Access=private)
@@ -207,6 +209,23 @@ classdef DAEC < handle
             % Convert to cell array of chars for consistency
             packed_names = strjoin(names, char(10));  % char(10) = '\n'
         end
+
+        function daec_date = daec_from_iris_date(iris_freq, iris_start)
+            freq = DAEC.iris_to_daec_freq(double(iris_freq));
+            
+            if ismember(freq, [DAEC.enums.frequency_t.freq_weekly_sun, DAEC.enums.frequency_t.freq_daily])
+                daec_date = DEDate(freq, iris_start.datetime);
+            elseif freq == DAEC.enums.frequency_t.freq_monthly
+                daec_date = DEDate(freq, double(iris_start));
+            elseif freq == DAEC.enums.frequency_t.freq_quarterly_mar
+                daec_date = DEDate(freq, double(iris_start));
+            elseif freq == DAEC.enums.frequency_t.freq_yearly_dec
+                daec_date = DEDate(freq, double(iris_start));
+            else
+                % fallback
+                daec_date = DEDate(freq, iris_start.datetime)
+            end
+        end
     end
 
     methods (Static) % read helpers
@@ -287,6 +306,51 @@ classdef DAEC < handle
             data = date_array;
         end
 
+        function iris_tseries = make_iris_tseries(axes, data)
+            if numel(axes) == 1
+                iris_freq = DAEC.daec_to_iris_freq(axes.frequency);
+                start_date = DAEC.iris_date(iris_freq, axes);
+                end_date = start_date + (axes.length - 1);
+                iris_tseries = tseries(start_date:end_date, data);
+            else
+                iris_freq = DAEC.daec_to_iris_freq(axes(1).frequency);
+                start_date = DAEC.iris_date(iris_freq, axes(1));
+                end_date = start_date + (axes(1).length - 1);
+                iris_tseries = tseries(start_date:end_date, data);
+                iris_tseries.Comment = axes(2).names;
+            end
+        end
+
+        function iris_date_obj = iris_date(iris_freq, axis)
+            daec_start = axis.first;
+            switch iris_freq
+                case 1 % yearly
+                    iris_date_obj = yy(daec_start);
+                case 4 % quarterly
+                    mod = rem(daec_start, 4);
+                    iris_date_obj = qq((daec_start-mod)/4, mod+1);
+                case 12 % monthly
+                    mod = rem(daec_start, 12);
+                    iris_date_obj = mm((daec_start-mod)/12, mod+1);
+                case 52 % weekly
+                    year_ptr = libpointer('int32Ptr', 0);
+                    month_ptr = libpointer('uint32Ptr', 0);
+                    day_ptr = libpointer('uint32Ptr', 0);
+                    [year, month, day] = DAEC.check_call('de_unpack_calendar_date', axis.frequency, axis.first, year_ptr, month_ptr, day_ptr);
+                    iris_date_obj = ww(double(year), double(month), double(day));
+                case 365 % daily
+                    year_ptr = libpointer('int32Ptr', 0);
+                    month_ptr = libpointer('uint32Ptr', 0);
+                    day_ptr = libpointer('uint32Ptr', 0);
+                    [year, month, day] = DAEC.check_call('de_unpack_calendar_date', axis.frequency, axis.first, year_ptr, month_ptr, day_ptr);
+                    iris_date_obj = dd(double(year), double(month), double(day));
+                otherwise
+                    error(sprintf('No IRIS conversion available for frequency %s', axis.frequency))
+            end
+        end
+
     end
+
+
 
 end

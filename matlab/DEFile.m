@@ -5,6 +5,7 @@ classdef DEFile < handle
         fname {mustBeTextScalar} = ''
         memory (1,1) {mustBeNumericOrLogical} = false
         readonly (1,1) {mustBeNumericOrLogical} = false 
+        read_to_iris (1,1) {mustBeNumericOrLogical} = false
     end
 
     methods (Static)
@@ -14,6 +15,7 @@ classdef DEFile < handle
                 o.readonly = false
                 o.memory = false
                 o.truncate = false
+                o.read_to_iris = false
             end
             if isa(path, 'string')
                 path = char(path)
@@ -33,6 +35,7 @@ classdef DEFile < handle
             de.fname = path;
             de.memory = o.memory;
             de.readonly = o.readonly;
+            de.read_to_iris = o.read_to_iris;
         end
     end
 
@@ -75,8 +78,12 @@ classdef DEFile < handle
             end
             pn = lib.pointer('stringPtrPtr', {''}); % pointer to names
             pv = lib.pointer('stringPtrPtr', {''}); % pointer to values
-            num = lib.pointer('longPtr', -1);
+            num = lib.pointer('int64Ptr', -1);
             DAEC.check_call('de_get_all_attributes', de.ptr, id, delim, num, pn, pv);
+            if isempty(pn.Value{1})
+                attr = struct();
+                return
+            end
             names = split(pn.Value{1}, delim);
             assert(numel(names) == num.Value, 'Inconsistent number of names')
             values = split(pv.Value{1}, delim);
@@ -205,6 +212,8 @@ classdef DEFile < handle
                 end
             elseif(isa(val, 'DESeries'))
                  [~] = store_daecseries(de, name, val, pid);
+            elseif(isa(val, 'tseries')) %iris tseries
+                 [~] = store_iristseries(de, name, val, pid);
             elseif isscalar(val)
                 [~] = store_scalar(de, name, val, pid);
             elseif isvector(val) && ~ischar(val) && ~isstring(val) && size(val,2) == 1
@@ -292,7 +301,15 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_plain
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
-                    val = DESeries(DEAxis(tseries_t.axis), data);
+                    if de.read_to_iris
+                        val = DAEC.make_iris_tseries(DEAxis(tseries_t.axis), data);
+                        attr = get_all_attributes(de, obj_t.id);
+                        if isfield(attr, 'Comment')
+                            val.Comment = attr.Comment;
+                        end
+                    else
+                        val = DESeries(DEAxis(tseries_t.axis), data);
+                    end
                 case DAEC.enums.axis_type_t.axis_names
                     % todo: make something
                     val = data;
@@ -324,6 +341,8 @@ classdef DEFile < handle
             if DAEC.enums.axis_type_t.(mvtseries_t.axis1.ax_type) == DAEC.enums.axis_type_t.axis_plain && DAEC.enums.axis_type_t.(mvtseries_t.axis2.ax_type) == DAEC.enums.axis_type_t.axis_plain
                 % both axes plain
                 val = data;
+            elseif de.read_to_iris
+                val = DAEC.make_iris_tseries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             else
                 val = DESeries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             end
@@ -474,7 +493,39 @@ classdef DEFile < handle
                 [~, ~, ~, ~, id] = DAEC.check_call('de_store_ndtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_ndtseries, eltype, elfreq, naxes, axis_ids_ptr, nbytes, val_ptr, id_ptr);
             end
             % type = DAEC.enums.class_t.class_vector;
-        end       
+        end 
+        
+        function id = store_iristseries(de, name, series, pid)
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.data(:));
+            
+            val_size = size(series.data);
+            if val_size(2) == 1
+                % tseries
+                start_date = DAEC.daec_from_iris_date(series.Frequency, series.Start);
+                axis_id = de.create_axis(start_date.frequency, val_size(1), start_date.value);
+                [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
+                if isprop(series, 'Comment') && ~isempty(char(series.Comment))
+                    set_attribute(de, id, 'Comment', char(series.Comment))
+                end
+            else
+                start_date = DAEC.daec_from_iris_date(series.Frequency, series.Start);
+                axis_id1 = de.create_axis(start_date.frequency, val_size(1), start_date.value);
+                if iscell(series.Comment)
+                    axis_id2 = de.create_names_axis(series.Comment);
+                else
+                    error('IRIS tseries has multiple dimensions but Comment field is not a cell array; cannot store names axis.')
+                end
+                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+            end
+        end
+        
     end
 
     methods % write helpers
@@ -505,6 +556,10 @@ classdef DEFile < handle
             axis_id_ptr = libpointer('int64Ptr', int64(0));
             names_packed = DAEC.pack_column_names(names);
             [~, ~, axis_id] = DAEC.check_call('de_axis_names', de.ptr, int64(numel(names)), names_packed, axis_id_ptr);
+        end
+
+        function set_attribute(de, obj_id, name, value)
+            [~] = DAEC.check_call('de_set_attribute', de.ptr, obj_id, char(name), char(value));
         end
   
     end

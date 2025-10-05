@@ -570,13 +570,10 @@ classdef DEFile < handle
                     if strcmp(f{1}, de.iris_colnames_field) == 1
                         set_attribute(de, id, 'iris_colnames_field', char(f{1}));
                         continue
-                    end
-                    try
-                        if ~isempty(char(series.UserData.(f{1})))
-                            set_attribute(de, id, f{1}, char(series.UserData.(f{1})));
-                        end
-                    catch
-                        warning(sprintf('Skipping storing of UserData field of %s for object %s. Unsupported type.\n', f{1}, name))
+                    elseif ischar(series.UserData.(f{1})) || isstring(series.UserData.(f{1}))
+                        set_attribute(de, id, f{1}, char(series.UserData.(f{1})));
+                    else
+                        warning(sprintf('Skipping storing of UserData field %s for object %s. Unsupported type.\n', f{1}, name))
                     end
                 end
             end

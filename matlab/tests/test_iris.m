@@ -38,6 +38,11 @@ test_struct.iris_series.daily_mvts.UserData = struct('Columns', {{'Rate_Change',
 test_struct.iris_series.quarterly_mvts = Series(qq(2000,1):qq(2002,2), [0.1*randn(10,1), 0.05*randn(10,1)]);
 test_struct.iris_series.quarterly_mvts.Comment = 'Daily macro indicators: [Rate_Change, Vol_Index]';
 test_struct.iris_series.quarterly_mvts.UserData = struct('Columns', {{'Rate_Change', 'Vol_Index'}});
+test_struct.iris_series.quarterly_mvts.UserData.second_comment = 'Hello world!';
+test_struct.iris_series.quarterly_mvts.UserData.third_comment = "Hello world!";
+test_struct.iris_series.quarterly_mvts.UserData.second_cell = {'Hello', 'World'};
+test_struct.iris_series.quarterly_mvts.UserData.second_struct = struct('thisfield', {'Hello', 'World'});
+test_struct.iris_series.quarterly_mvts.UserData.some_number = 42;
 
 de = DEFile(testFile, 'iris_colnames_field', 'Columns');
 de.truncate();

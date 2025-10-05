@@ -14,6 +14,11 @@ const char *de_version(void)
     return DE_VERSION;
 }
 
+const int de_max_axes(void)
+{
+    return DE_MAX_AXES;
+}
+
 /* check if a file exists at the given path */
 bool _isfile(const char *path)
 {

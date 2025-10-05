@@ -22,6 +22,9 @@ extern "C"
     /* return the library version as a static string in "x.y.z" format */
     const char *de_version(void);
 
+    /* returns the current setting for DE_MAX_AXES*/
+    const int de_max_axes(void);
+
     /* ***************************** error *************************************** */
 
     /* Return the result code of the most recent error. If msg != NULL, fill msg with

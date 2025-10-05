@@ -332,7 +332,7 @@ classdef DEFile < handle
         function val = retrieve_ndarray(de, obj_t)
 
             % get axis ids
-            axis_ids_ptr = libpointer('int64Ptr', [0 0 0 0 0]);
+            axis_ids_ptr = libpointer('int64Ptr', repmat(0, 1, DAEC.max_axes));
             [~, axis_ids, ] = DAEC.check_call('de_load_ndtseries_axis_ids', de.ptr, obj_t.id, axis_ids_ptr);
 
             % load axes

@@ -92,6 +92,10 @@ classdef DAEC < handle
         function de = open(varargin)
             de = DEFile(varargin{:});
         end
+
+        function max_axes = max_axes()
+            max_axes = calllib(DAEC.instance.libname, 'de_max_axes');
+        end
     end
 
     methods (Static)

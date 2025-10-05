@@ -12,6 +12,9 @@
 /* return a static string containing the library version in format "x.y.z" */
 const char *de_version(void);
 
+/* returns the current setting for DE_MAX_AXES*/
+const int de_max_axes(void);
+
 /*
     pack a vector of strings into a contiguous memory buffer.
     this may be needed before writing an array of strings

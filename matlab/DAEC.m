@@ -98,6 +98,12 @@ classdef DAEC < handle
         function max_axes = max_axes()
             max_axes = calllib(DAEC.instance.libname, 'de_max_axes');
         end
+
+        function old = old_iris()
+            vstring = irisversion;
+            year = str2double(vstring(1:4));
+            old = year <= 2015
+        end
     end
 
     methods (Static)
@@ -210,20 +216,43 @@ classdef DAEC < handle
             packed_names = strjoin(names, char(10));  % char(10) = '\n'
         end
 
-        function daec_date = daec_from_iris_date(iris_freq, iris_start)
-            freq = DAEC.iris_to_daec_freq(double(iris_freq));
-            
-            if ismember(freq, [DAEC.enums.frequency_t.freq_weekly_sun, DAEC.enums.frequency_t.freq_daily])
-                daec_date = DEDate(freq, iris_start.datetime);
-            elseif freq == DAEC.enums.frequency_t.freq_monthly
-                daec_date = DEDate(freq, double(iris_start));
-            elseif freq == DAEC.enums.frequency_t.freq_quarterly_mar
-                daec_date = DEDate(freq, double(iris_start));
-            elseif freq == DAEC.enums.frequency_t.freq_yearly_dec
-                daec_date = DEDate(freq, double(iris_start));
+        function daec_date = daec_from_iris_date(ts) 
+            old_iris = false;
+            if isprop(ts, 'Start')
+                % modern iris
+                freq = DAEC.iris_to_daec_freq(double(ts.Frequency));
+                val = double(ts.Start);
             else
-                % fallback
-                daec_date = DEDate(freq, iris_start.datetime)
+                old_iris = true;
+                % extract frequency from digits
+                val = floor(ts.start);
+                freq_stub = round((ts.start - val) * 100);
+                if freq_stub == 0
+                    freq_stub = 365;
+                end
+                freq = DAEC.iris_to_daec_freq(freq_stub);
+            end
+            
+            switch freq
+                case {  DAEC.enums.frequency_t.freq_yearly_dec, 
+                        DAEC.enums.frequency_t.freq_quarterly_mar,
+                        DAEC.enums.frequency_t.freq_monthly
+                    }
+                    daec_date = DEDate(freq, val);
+                case  DAEC.enums.frequency_t.freq_weekly_thu
+                    if old_iris
+                        daec_date = DEDate(freq, datetime(val*7, 'ConvertFrom', 'datenum'));
+                    else
+                        daec_date = DEDate(freq, ts.Start.datetime);
+                    end
+                case DAEC.enums.frequency_t.freq_daily
+                    if old_iris
+                        daec_date = DEDate(freq, datetime(val, 'ConvertFrom', 'datenum'));
+                    else
+                        daec_date = DEDate(freq, ts.Start.datetime);
+                    end
+                otherwise
+                    daec_date = DEDate(DAEC.enums.frequency_t.freq_unit, val);
             end
         end
     end

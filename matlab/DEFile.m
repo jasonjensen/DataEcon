@@ -507,15 +507,15 @@ classdef DEFile < handle
             
             val_size = size(series.data);
             if val_size(2) == 1
+                start_date = DAEC.daec_from_iris_date(series);
                 % tseries
-                start_date = DAEC.daec_from_iris_date(series.Frequency, series.Start);
                 axis_id = de.create_axis(start_date.frequency, val_size(1), start_date.value);
                 [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
                 if isprop(series, 'Comment') && ~isempty(char(series.Comment))
                     set_attribute(de, id, 'Comment', char(series.Comment))
                 end
             else
-                start_date = DAEC.daec_from_iris_date(series.Frequency, series.Start);
+                start_date = DAEC.daec_from_iris_date(series);
                 axis_id1 = de.create_axis(start_date.frequency, val_size(1), start_date.value);
                 if iscell(series.Comment)
                     axis_id2 = de.create_names_axis(series.Comment);

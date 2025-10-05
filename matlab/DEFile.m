@@ -6,6 +6,7 @@ classdef DEFile < handle
         memory (1,1) {mustBeNumericOrLogical} = false
         readonly (1,1) {mustBeNumericOrLogical} = false 
         read_to_iris (1,1) {mustBeNumericOrLogical} = false
+        iris_colnames_field {mustBeTextScalar} = ''
     end
 
     methods (Static)
@@ -16,6 +17,7 @@ classdef DEFile < handle
                 o.memory = false
                 o.truncate = false
                 o.read_to_iris = false
+                o.iris_colnames_field = ''
             end
             if isa(path, 'string')
                 path = char(path)
@@ -36,6 +38,7 @@ classdef DEFile < handle
             de.memory = o.memory;
             de.readonly = o.readonly;
             de.read_to_iris = o.read_to_iris;
+            de.iris_colnames_field = o.iris_colnames_field;
         end
     end
 
@@ -212,6 +215,8 @@ classdef DEFile < handle
                 end
             elseif(isa(val, 'DESeries'))
                  [~] = store_daecseries(de, name, val, pid);
+            elseif(isa(val, 'Series')) %iris tseries
+                 [~] = store_irisseries(de, name, val, pid);
             elseif(isa(val, 'tseries')) %iris tseries
                  [~] = store_iristseries(de, name, val, pid);
             elseif isscalar(val)
@@ -302,11 +307,8 @@ classdef DEFile < handle
                     val = data;
                 case DAEC.enums.axis_type_t.axis_range
                     if de.read_to_iris
-                        val = DAEC.make_iris_tseries(DEAxis(tseries_t.axis), data);
                         attr = get_all_attributes(de, obj_t.id);
-                        if isfield(attr, 'Comment')
-                            val.Comment = attr.Comment;
-                        end
+                        val = DAEC.make_iris_series(DEAxis(tseries_t.axis), data, attr);
                     else
                         val = DESeries(DEAxis(tseries_t.axis), data);
                     end
@@ -342,7 +344,8 @@ classdef DEFile < handle
                 % both axes plain
                 val = data;
             elseif de.read_to_iris
-                val = DAEC.make_iris_tseries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
+                attr = get_all_attributes(de, obj_t.id);
+                val = DAEC.make_iris_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data, attr);
             else
                 val = DESeries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             end
@@ -523,6 +526,59 @@ classdef DEFile < handle
                     error('IRIS tseries has multiple dimensions but Comment field is not a cell array; cannot store names axis.')
                 end
                 [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+            end
+        end
+
+        function id = store_irisseries(de, name, series, pid)
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.data(:));
+            
+            val_size = size(series.data);
+            if val_size(2) == 1
+                start_date = DAEC.daec_from_iris_date(series);
+                % tseries
+                axis_id = de.create_axis(start_date.frequency, val_size(1), start_date.value);
+                [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
+                set_attribute(de, id, 'iris_type', 'S');
+                if isprop(series, 'Comment') && ~isempty(char(series.Comment))
+                    set_attribute(de, id, 'Comment', char(series.Comment))
+                end
+            else
+                start_date = DAEC.daec_from_iris_date(series);
+                axis_id1 = de.create_axis(start_date.frequency, val_size(1), start_date.value);
+                if ~isempty(de.iris_colnames_field)
+                    axis_id2 = de.create_names_axis(series.UserData.(de.iris_colnames_field));
+                elseif iscell(series.Comment)
+                    axis_id2 = de.create_names_axis(series.Comment);
+                else
+                    error('IRIS series has multiple dimensions but could not find column names; cannot store names axis. Try specifying iris_colnames_field when opening the file.')
+                end
+                [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+                set_attribute(de, id, 'iris_type', 'S');
+                if isempty(de.iris_colnames_field)
+                    set_attribute(de, id, 'iris_colnames_field', 'Comment');
+                elseif isprop(series, 'Comment') && ~isempty(char(series.Comment))
+                    set_attribute(de, id, 'Comment', char(series.Comment));
+                end
+                for f = fieldnames(series.UserData)'
+                    if strcmp(f{1}, de.iris_colnames_field) == 1
+                        set_attribute(de, id, 'iris_colnames_field', char(f{1}));
+                        continue
+                    end
+                    try
+                        if ~isempty(char(series.UserData.(f{1})))
+                            set_attribute(de, id, f{1}, char(series.UserData.(f{1})));
+                        end
+                    catch
+                        warning(sprintf('Skipping storing of UserData field of %s for object %s. Unsupported type.\n', f{1}, name))
+                    end
+                end
             end
         end
         

@@ -17,8 +17,6 @@ classdef DAEC < handle
 
     properties (Constant)
         enums = daecenums(); % daecenums()
-        daec_to_iris_freq = get_daec_to_iris_freq_map();
-        iris_to_daec_freq = get_iris_to_daec_freq_map();
     end
 
     methods (Access=private)
@@ -220,7 +218,7 @@ classdef DAEC < handle
             old_iris = false;
             if isprop(ts, 'Start')
                 % modern iris
-                freq = DAEC.iris_to_daec_freq(double(ts.Frequency));
+                freq = DAEC.enums.frequency_convert.from_iris(double(ts.Frequency));
                 val = double(ts.Start);
             else
                 old_iris = true;
@@ -230,7 +228,7 @@ classdef DAEC < handle
                 if freq_stub == 0
                     freq_stub = 365;
                 end
-                freq = DAEC.iris_to_daec_freq(freq_stub);
+                freq = DAEC.enums.frequency_convert.from_iris(freq_stub);
             end
             
             switch freq
@@ -335,18 +333,50 @@ classdef DAEC < handle
             data = date_array;
         end
 
-        function iris_tseries = make_iris_tseries(axes, data)
+        function iris_series = make_iris_series(axes, data, attr)
+            make_tseries = true;
+            if isfield(attr, 'iris_type') && attr.iris_type == 'S'
+                make_tseries = false;
+            end
             if numel(axes) == 1
-                iris_freq = DAEC.daec_to_iris_freq(axes.frequency);
+                iris_freq = DAEC.enums.frequency_convert.to_iris(axes.frequency);
                 start_date = DAEC.iris_date(iris_freq, axes);
                 end_date = start_date + (axes.length - 1);
-                iris_tseries = tseries(start_date:end_date, data);
+                if make_tseries
+                    iris_series = tseries(start_date:end_date, data);
+                    if isfield(attr, 'Comment')
+                        iris_series.Comment = attr.Comment;
+                    end
+                else
+                    iris_series = Series(start_date:end_date, data);
+                    for f = fieldnames(attr)'
+                        if strcmp(f{1}, 'Comment') == 1
+                            iris_series.Comment = attr.Comment;
+                        else
+                            iris_series.UserData.(f{1}) = attr.(f{1});
+                        end
+                    end
+                end
+                
             else
-                iris_freq = DAEC.daec_to_iris_freq(axes(1).frequency);
+                iris_freq = DAEC.enums.frequency_convert.to_iris(axes(1).frequency);
                 start_date = DAEC.iris_date(iris_freq, axes(1));
                 end_date = start_date + (axes(1).length - 1);
-                iris_tseries = tseries(start_date:end_date, data);
-                iris_tseries.Comment = axes(2).names;
+                if make_tseries
+                    iris_series = tseries(start_date:end_date, data);
+                    iris_series.Comment = axes(2).names;
+                else
+                    iris_series = Series(start_date:end_date, data);
+                    for f = fieldnames(attr)'
+                        if strcmp(f{1}, 'Comment') == 1
+                            iris_series.Comment = attr.Comment;
+                        elseif strcmp(f{1}, 'iris_colnames_field')
+                            iris_series.UserData.(attr.(f{1})) = axes(2).names;
+                        else
+                            iris_series.UserData.(f{1}) = attr.(f{1});
+                        end
+                    end 
+                end
             end
         end
 

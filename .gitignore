@@ -42,6 +42,9 @@
 *.idb
 *.pdb
 
+# Temporary files
+*.asv
+
 bin/
 .cache/
 .vscode/

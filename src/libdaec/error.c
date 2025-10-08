@@ -39,7 +39,7 @@ int de_clear_error(void)
     return DE_SUCCESS;
 }
 
-void _push_trace(const char *func, const char *file, int line)
+static void _push_trace(const char *func, const char *file, int line)
 {
     char *trace = last_error.source_trace;
     int len = strlen(trace);

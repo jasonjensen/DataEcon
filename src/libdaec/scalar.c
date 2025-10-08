@@ -26,7 +26,7 @@ int de_store_scalar(de_file de, obj_id_t pid, const char *name, type_t type,
     if (!check_scalar_type(type))
         return error(DE_BAD_TYPE);
     obj_id_t _id;
-    TRACE_RUN(_new_object(de, pid, class_scalar, type, name, &_id));
+    TRACE_RUN(new_object(de, pid, class_scalar, type, name, &_id));
     if (id != NULL)
         *id = _id;
     TRACE_RUN(sql_store_scalar_value(de, _id, freq, nbytes, value));

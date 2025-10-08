@@ -26,7 +26,7 @@ int de_store_mvtseries(de_file de, obj_id_t pid, const char *name, type_t obj_ty
     TRACE_RUN(validate_eltype(obj_type, eltype, elfreq));
 
     obj_id_t _id;
-    TRACE_RUN(_new_object(de, pid, class_mvtseries, obj_type, name, &_id));
+    TRACE_RUN(new_object(de, pid, class_mvtseries, obj_type, name, &_id));
     if (id != NULL)
         *id = _id;
     TRACE_RUN(sql_store_mvtseries_value(de, _id, eltype, elfreq, axis1_id, axis2_id, nbytes, value));

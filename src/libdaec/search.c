@@ -25,7 +25,7 @@ static char *_push_string(char *p, const char *str)
     return p;
 }
 
-int _prepare_search(de_file de, int64_t pid, const char *wc, type_t type, class_t class, search_t *search)
+static int _prepare_search(de_file de, int64_t pid, const char *wc, type_t type, class_t class, search_t *search)
 {
     enum
     {
@@ -128,7 +128,7 @@ int de_next_object(de_search search, object_t *object)
     switch (rc)
     {
     case SQLITE_ROW:
-        _fill_object(search->stmt, object);
+        sql_fill_object(search->stmt, object);
         return DE_SUCCESS;
     case SQLITE_DONE:
         sqlite3_finalize(search->stmt);

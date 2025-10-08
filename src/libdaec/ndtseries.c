@@ -29,7 +29,7 @@ int de_store_ndtseries(de_file de, obj_id_t pid, const char *name, type_t obj_ty
         return error(DE_BAD_NUM_AXES);
 
     obj_id_t _id;
-    TRACE_RUN(_new_object(de, pid, class_ndtseries, obj_type, name, &_id));
+    TRACE_RUN(new_object(de, pid, class_ndtseries, obj_type, name, &_id));
     if (id != NULL)
         *id = _id;
     TRACE_RUN(sql_store_ndtseries_value(de, _id, eltype, elfreq, nbytes, value));
@@ -68,7 +68,7 @@ int de_load_ndtseries_eltype_elfreq(de_file de, obj_id_t id, type_t *eltype, fre
     return DE_SUCCESS;
 }
 
-int de_load_ndtseries_value(de_file de, obj_id_t id, void **value)
+int de_load_ndtseries_value(de_file de, obj_id_t id, const void **value)
 {
     if (de == NULL)
         return error(DE_NULL);

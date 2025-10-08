@@ -102,11 +102,8 @@ int de_catalog_size(de_file de, obj_id_t pid, int64_t *count);
 /* ========================================================================= */
 /* internal */
 
-int _new_object(de_file de, obj_id_t pid, class_t class, type_t type,
+int new_object(de_file de, obj_id_t pid, class_t class, type_t type,
                 const char *name, obj_id_t *id);
-
-/* check if the given string is a valid object name */
-bool _check_name(const char *name);
 
 bool check_scalar_type(type_t type);
 bool check_tseries_type(type_t type);

@@ -71,14 +71,8 @@ struct de_file_s
     bool transaction;
 };
 
-/* called when creating a new de_file. creates tables and indexes */
-int _init_file(de_file de);
-
-/* return a static buffer containing the SQL text for the given stmt_name */
-const char *_get_statement_sql(stmt_name_t stmt_name);
-
 /* return a prepared statement by the given name */
-sqlite3_stmt *_get_statement(de_file de, stmt_name_t stmt_name);
+sqlite3_stmt *sql_statement(de_file de, stmt_name_t stmt_name);
 
 /* functions that start and post transactions */
 int de_commit(de_file de);

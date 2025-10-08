@@ -11,7 +11,7 @@
 #include "sql.h"
 
 /* check if the given string is a valid object name */
-bool _check_name(const char *name)
+static bool _check_name(const char *name)
 {
     /* check that name is not empty */
     if (*name == '\0')
@@ -40,7 +40,7 @@ bool _check_name(const char *name)
     return true;
 }
 
-int _new_object(de_file de, obj_id_t pid, class_t class, type_t type, const char *name, obj_id_t *id)
+int new_object(de_file de, obj_id_t pid, class_t class, type_t type, const char *name, obj_id_t *id)
 {
     if (!_check_name(name))
         return trace_error();

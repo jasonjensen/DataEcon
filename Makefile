@@ -63,7 +63,7 @@ SQLITE3_LDFLAGS = $(MY_LDFLAGS)
 LIBDE_SRC_H = $(wildcard src/libdaec/*.h) sqlite3.h
 LIBDE_SRC_C = $(wildcard src/libdaec/*.c)
 LIBDE_SRC_O = $(patsubst %.c,$(CACHEDIR)/%.o,$(notdir $(LIBDE_SRC_C)))
-LIBDE_LDFLAGS = $(MY_LDFLAGS)
+LIBDE_LDFLAGS = $(MY_LDFLAGS) -Wl,--version-script=src/libdaec/symbols.map
 
 LIBDEPROF_SRC_O = $(patsubst %.c,$(PROFDIR)/%.o,$(notdir $(LIBDE_SRC_C)))
 
@@ -164,6 +164,10 @@ lib :
 # redirect generated .o files into .cache
 $(CACHEDIR)/%.o : %.c | $(CACHEDIR)
 	$(COMPILE.c) $(OUTPUT_OPTION) $<
+
+# special rule for sqlite3.c with hidden visibility
+$(CACHEDIR)/sqlite3.o : src/sqlite3/sqlite3.c | $(CACHEDIR)
+	$(COMPILE.c) -fvisibility=hidden $(OUTPUT_OPTION) $<
 
 # redirect generated .o files into .cache
 $(COVDIR)/%.o : %.c | $(COVDIR)

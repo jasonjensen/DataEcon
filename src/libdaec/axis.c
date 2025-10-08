@@ -4,7 +4,7 @@
 #include "axis.h"
 #include "sql.h"
 
-int _get_axis(de_file de, axis_t *axis)
+static int _get_axis(de_file de, axis_t *axis)
 {
     int rc = sql_find_axis(de, axis);
     if (rc == DE_SUCCESS)

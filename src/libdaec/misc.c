@@ -14,34 +14,11 @@ const char *de_version(void)
     return DE_VERSION;
 }
 
-const int de_max_axes(void)
+int de_max_axes(void)
 {
     return DE_MAX_AXES;
 }
 
-/* check if a file exists at the given path */
-bool _isfile(const char *path)
-{
-    FILE *f = fopen(path, "r");
-    if (f == NULL)
-        return false;
-    fclose(f);
-    return true;
-}
-
-const char *_id2str(int64_t id)
-{
-    static char buffer[100];
-    snprintf(buffer, 100, "id=%" PRId64, id);
-    return buffer;
-}
-
-const char *_pidnm2str(int64_t pid, const char *name)
-{
-    static char buffer[100];
-    snprintf(buffer, 100, "pid=%" PRId64 ",name='%s'", pid, name);
-    return buffer;
-}
 
 /*
     pack a vector of strings into a contiguous memory buffer.

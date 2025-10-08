@@ -16,7 +16,7 @@
     if (SQLITE_OK != sqlite3_exec((de)->db, (sql), NULL, NULL, NULL)) \
         return db_error(de);
 
-int _init_file(de_file de)
+static int _init_file(de_file de)
 {
     /* make tables */
     RUN_SQL(de,
@@ -122,7 +122,7 @@ int _init_file(de_file de)
     return DE_SUCCESS;
 }
 
-const char *_get_statement_sql(stmt_name_t stmt_name)
+static const char *_get_sql_text(stmt_name_t stmt_name)
 {
     switch (stmt_name)
     {
@@ -194,7 +194,7 @@ const char *_get_statement_sql(stmt_name_t stmt_name)
     }
 }
 
-sqlite3_stmt *_get_statement(de_file de, stmt_name_t stmt_name)
+sqlite3_stmt *sql_statement(de_file de, stmt_name_t stmt_name)
 {
     if ((stmt_name < 0) || (stmt_size <= stmt_name))
     {
@@ -204,7 +204,7 @@ sqlite3_stmt *_get_statement(de_file de, stmt_name_t stmt_name)
     sqlite3_stmt *stmt = de->stmt[stmt_name];
     if (stmt != NULL)
         return stmt;
-    const char *sql = _get_statement_sql(stmt_name);
+    const char *sql = _get_sql_text(stmt_name);
     if (sql == NULL)
     {
         trace_error();
@@ -219,7 +219,17 @@ sqlite3_stmt *_get_statement(de_file de, stmt_name_t stmt_name)
     return stmt;
 }
 
-int _open(const char *fname, de_file *pde, int flags)
+/* check if a file exists at the given path */
+static bool _isfile(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (f == NULL)
+        return false;
+    fclose(f);
+    return true;
+}
+
+static int _open(const char *fname, de_file *pde, int flags)
 {
 
     if (pde == NULL)
@@ -305,7 +315,7 @@ int de_begin_transaction(de_file de)
     return DE_SUCCESS;
 }
 
-int _fin_stmts(de_file de)
+static int _fin_stmts(de_file de)
 {
     for (stmt_name_t i = 0; i < stmt_last; ++i)
     {

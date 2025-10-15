@@ -82,6 +82,32 @@ classdef DAEC < handle
                 inst.debug_ = tf;
             end
         end
+        
+        function db = readdb(path, NameValueArgs)
+            arguments 
+                path {mustBeTextScalar} = ''
+                NameValueArgs.memory (1,1) {mustBeNumericOrLogical} = false
+                NameValueArgs.read_to_iris (1,1) {mustBeNumericOrLogical} = false
+                NameValueArgs.iris_colnames_field {mustBeTextScalar} = ''
+            end
+            
+            de = DEFile(path, 'memory', NameValueArgs.memory, 'readonly', true, 'read_to_iris', NameValueArgs.read_to_iris, 'iris_colnames_field', NameValueArgs.iris_colnames_field);
+            db = de.read();
+            de.close();
+        end
+        
+        function writedb(path, db, NameValueArgs)
+            arguments 
+                path {mustBeTextScalar} = ''
+                db {mustBeA(db, ["struct"])} = struct()
+                NameValueArgs.iris_colnames_field {mustBeTextScalar} = ''
+            end
+            de = DEFile(path,  'readonly', false, 'iris_colnames_field', NameValueArgs.iris_colnames_field);
+            de.truncate();
+            de.write(db);
+            de.close();
+            
+        end
     end
 
     methods (Static)

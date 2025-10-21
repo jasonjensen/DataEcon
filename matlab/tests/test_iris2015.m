@@ -19,6 +19,9 @@ test_struct.iris.quarterly_tseries.Comment = 'Real GDP (index, q/q cumulative)';
 test_struct.iris.yearly_tseries = tseries(yy(2000):yy(2023), 100 + cumsum(0.5 + 0.2*randn(24,1)));
 test_struct.iris.yearly_tseries.Comment = 'Real GDP (index, Y/Y cumulative)';
 
+test_struct.iris.halfyearly_tseries = tseries(length(hh(2000,1):hh(2011,2)), 100 + cumsum(0.5 + 0.2*randn(24,1)));
+test_struct.iris.halfyearly_tseries.Comment = 'Real GDP (index, Y/Y cumulative)';
+
 test_struct.iris.weekly_tseries = tseries(ww(2021,1):ww(2021,10), rand(10,1));
 test_struct.iris.daily_tseries = tseries(dd(2023,1,1):dd(2023,1,15), 100 + cumsum(0.1 + 0.05*randn(15,1)));
 test_struct.iris.daily_tseries.Comment = 'Real GDP (index, daily)';

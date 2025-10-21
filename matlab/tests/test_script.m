@@ -29,6 +29,7 @@ test_struct.scalars.complex_val = complex(2.5, 3.7);
 test_struct.scalars.date_val1 = DEDate('quarterly', 2022,3);
 test_struct.scalars.date_val2 = DEDate('monthly', 2022,9);
 test_struct.scalars.date_val3 = DEDate('daily', 2022,9,10);
+test_struct.scalars.date_val3 = DEDate('halfyearly', 2022,1);
 
 % vectors
 test_struct.vectors.double_vec = [1.1,  2.2,  3.3,  4.4,  5.5];
@@ -57,6 +58,7 @@ test_struct.matrices.complex_mat = complex(randn(1000,800), randn(1000,800));
 test_struct.tseries.quarterly_ts = DESeries(DEAxis(DEDate('quarterly', 2022, 3), 5), [1.1,  2.2,  3.3,  4.4,  5.5]');
 test_struct.tseries.monthly_ts = DESeries(DEAxis(DEDate('monthly', 2022, 3), 5), [10.1,  20.2,  30.3,  40.4,  50.5]');
 test_struct.tseries.yearly_ts = DESeries(DEAxis(DEDate('yearly', 2022), 5), [100.1,  200.2,  300.3,  400.4,  500.5]');
+test_struct.tseries.halfyearly_ts = DESeries(DEAxis(DEDate('halfyearly', 2022, 1), 5), [1000.1,  2000.2,  3000.3,  4000.4,  5000.5]');
 
 % mvtseries
 % test_struct.mvtseries.quarterly_mvts = MVTSeries(DEDate('quarterly', 2022,3), {'GDP', 'CPI'}, [1.1,  2.2,  3.3,  4.4,  5.5; 1.2,  2.3,  3.4,  4.5,  5.6]');

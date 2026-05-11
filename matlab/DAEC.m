@@ -259,6 +259,7 @@ classdef DAEC < handle
             
             switch freq
                 case {  DAEC.enums.frequency_t.freq_yearly_dec, 
+                        DAEC.enums.frequency_t.freq_halfyearly_jun,
                         DAEC.enums.frequency_t.freq_quarterly_mar,
                         DAEC.enums.frequency_t.freq_monthly
                     }
@@ -411,6 +412,9 @@ classdef DAEC < handle
             switch iris_freq
                 case 1 % yearly
                     iris_date_obj = yy(daec_start);
+                case 2 % halfyearly
+                    mod = rem(daec_start, 2);
+                    iris_date_obj = hh((daec_start-mod)/2, mod+1);
                 case 4 % quarterly
                     mod = rem(daec_start, 4);
                     iris_date_obj = qq((daec_start-mod)/4, mod+1);

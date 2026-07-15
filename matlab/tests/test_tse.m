@@ -24,15 +24,20 @@ testFile = fullfile(test_dir, ['test_daec_tse' num2str(randi(1000)) '.daec']);
 test_struct = struct();
 
 test_struct.tseries = struct();
-test_struct.tseries.yearly    = tse.TSeries(tse.yy(1990),                    (1:30)');
-test_struct.tseries.quarterly = tse.TSeries(tse.qq(2000, 1),                 100 + cumsum(randn(24, 1)));
-test_struct.tseries.monthly   = tse.TSeries(tse.mm(2010, 6),                 (1:60)');
-test_struct.tseries.weekly    = tse.TSeries(tse.MIT(tse.Weekly(7), 2021, 1), rand(10, 1));
-test_struct.tseries.daily     = tse.TSeries(tse.day('2023-01-01'),           cumsum(randn(15, 1)));
+test_struct.tseries.yearly       = tse.TSeries(tse.yy(1990),                        (1:30)');
+test_struct.tseries.halfyearly   = tse.TSeries(tse.MIT(tse.HalfYearly(6), 2000, 1), (1:12)');
+test_struct.tseries.quarterly    = tse.TSeries(tse.qq(2000, 1),                     100 + cumsum(randn(24, 1)));
+% non-default end period -> exercises the DataEcon enum aliasing (code 65)
+test_struct.tseries.quarterly_jan = tse.TSeries(tse.MIT(tse.Quarterly(1), 2000, 1), (1:8)');
+test_struct.tseries.monthly      = tse.TSeries(tse.mm(2010, 6),                     (1:60)');
+test_struct.tseries.weekly       = tse.TSeries(tse.MIT(tse.Weekly(7), 2021, 1),     rand(10, 1));
+test_struct.tseries.daily        = tse.TSeries(tse.day('2023-01-01'),               cumsum(randn(15, 1)));
+test_struct.tseries.bdaily       = tse.TSeries(tse.bday('2023-01-02'),              cumsum(randn(20, 1)));
 
 test_struct.mvtseries = struct();
-test_struct.mvtseries.quarterly = tse.MVTSeries(tse.qq(2000, 1), {'gdp','cpi','rate'}, reshape(1:72, 24, 3));
-test_struct.mvtseries.monthly   = tse.MVTSeries(tse.mm(2010, 6), {'x','y'},            reshape(1:120, 60, 2));
+test_struct.mvtseries.quarterly = tse.MVTSeries(tse.qq(2000, 1),                 {'gdp','cpi','rate'}, reshape(1:72, 24, 3));
+test_struct.mvtseries.monthly   = tse.MVTSeries(tse.mm(2010, 6),                 {'x','y'},            reshape(1:120, 60, 2));
+test_struct.mvtseries.weekly    = tse.MVTSeries(tse.MIT(tse.Weekly(7), 2021, 1), {'p','q'},            reshape(1:20, 10, 2));
 
 % --- write, then read back as tse objects --------------------------------
 de = DEFile(testFile);
@@ -60,6 +65,17 @@ for f = fieldnames(test_struct)'
     else
         fprintf('❌ %s: %d of %d FAILED.\n', f{1}, num_tests - num_passed, num_tests);
     end
+end
+
+% --- regression: default read (no read_to_tse) still yields DESeries -----
+de = DEFile(testFile, 'readonly', true);
+plain = de.read();
+de.close();
+if isa(plain.tseries.yearly, 'DESeries') && isa(plain.mvtseries.quarterly, 'DESeries')
+    fprintf('✅ default read (no read_to_tse) still returns DESeries.\n');
+else
+    fprintf('❌ default read regression: expected DESeries, got %s / %s.\n', ...
+        class(plain.tseries.yearly), class(plain.mvtseries.quarterly));
 end
 
 if exist(testFile, 'file')

@@ -6,6 +6,7 @@ classdef DEFile < handle
         memory (1,1) {mustBeNumericOrLogical} = false
         readonly (1,1) {mustBeNumericOrLogical} = false 
         read_to_iris (1,1) {mustBeNumericOrLogical} = false
+        read_to_tse (1,1) {mustBeNumericOrLogical} = false
         iris_colnames_field {mustBeTextScalar} = ''
     end
 
@@ -17,6 +18,7 @@ classdef DEFile < handle
                 o.memory = false
                 o.truncate = false
                 o.read_to_iris = false
+                o.read_to_tse = false
                 o.iris_colnames_field = ''
             end
             if isa(path, 'string')
@@ -38,6 +40,7 @@ classdef DEFile < handle
             de.memory = o.memory;
             de.readonly = o.readonly;
             de.read_to_iris = o.read_to_iris;
+            de.read_to_tse = o.read_to_tse;
             de.iris_colnames_field = o.iris_colnames_field;
         end
     end
@@ -219,6 +222,10 @@ classdef DEFile < handle
                  [~] = store_irisseries(de, name, val, pid);
             elseif(isa(val, 'tseries')) %iris tseries
                  [~] = store_iristseries(de, name, val, pid);
+            elseif(isa(val, 'tse.TSeries')) %TimeSeriesEcon.m tseries
+                 [~] = store_tseseries(de, name, val, pid);
+            elseif(isa(val, 'tse.MVTSeries')) %TimeSeriesEcon.m mvtseries
+                 [~] = store_tsemvseries(de, name, val, pid);
             elseif isscalar(val)
                 [~] = store_scalar(de, name, val, pid);
             elseif isvector(val) && ~ischar(val) && ~isstring(val) && size(val,2) == 1
@@ -309,6 +316,8 @@ classdef DEFile < handle
                     if de.read_to_iris
                         attr = get_all_attributes(de, obj_t.id);
                         val = DAEC.make_iris_series(DEAxis(tseries_t.axis), data, attr);
+                    elseif de.read_to_tse
+                        val = DAEC.make_tse_series(DEAxis(tseries_t.axis), data);
                     else
                         val = DESeries(DEAxis(tseries_t.axis), data);
                     end
@@ -346,6 +355,8 @@ classdef DEFile < handle
             elseif de.read_to_iris
                 attr = get_all_attributes(de, obj_t.id);
                 val = DAEC.make_iris_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data, attr);
+            elseif de.read_to_tse
+                val = DAEC.make_tse_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             else
                 val = DESeries([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             end
@@ -578,7 +589,50 @@ classdef DEFile < handle
                 end
             end
         end
-        
+
+        function id = store_tseseries(de, name, series, pid)
+            % Store a TimeSeriesEcon.m tse.TSeries as a DataEcon tseries.
+            %
+            % tse.MIT and DataEcon share the same (frequency, value) integer
+            % encoding, so the range axis is built directly from the series'
+            % firstdate -- no date conversion is needed (see
+            % DAEC.daec_from_tse_date).
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.values(:));
+
+            start = series.firstdate;   % tse.MIT
+            nrows = size(series.values, 1);
+            axis_id = de.create_axis(double(start.frequency), nrows, int64(start.value));
+            [~, ~, ~, id] = DAEC.check_call('de_store_tseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_tseries, eltype, elfreq, axis_id, nbytes, val_ptr, id_ptr);
+        end
+
+        function id = store_tsemvseries(de, name, series, pid)
+            % Store a TimeSeriesEcon.m tse.MVTSeries as a DataEcon mvtseries.
+            %
+            % Row axis is a range built from firstdate (same encoding as
+            % DataEcon); column axis is a names axis from the colnames.
+            if nargin < 4
+                pid = 0;
+            end
+
+            de.ensure_writeable(name);
+
+            id_ptr = libpointer('int64Ptr', 0);
+            [eltype, elfreq, val_ptr, nbytes] = DAEC.prepare_scalar(series.values(:));
+
+            start = series.firstdate;   % tse.MIT
+            nrows = size(series.values, 1);
+            axis_id1 = de.create_axis(double(start.frequency), nrows, int64(start.value));
+            axis_id2 = de.create_names_axis(cellstr(series.colnames));
+            [~, ~, ~, id] = DAEC.check_call('de_store_mvtseries', de.ptr, pid, char(name), DAEC.enums.type_t.type_mvtseries, eltype, elfreq, axis_id1, axis_id2, nbytes, val_ptr, id_ptr);
+        end
+
     end
 
     methods % write helpers

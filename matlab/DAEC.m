@@ -88,10 +88,11 @@ classdef DAEC < handle
                 path {mustBeTextScalar} = ''
                 NameValueArgs.memory (1,1) {mustBeNumericOrLogical} = false
                 NameValueArgs.read_to_iris (1,1) {mustBeNumericOrLogical} = false
+                NameValueArgs.read_to_tse (1,1) {mustBeNumericOrLogical} = false
                 NameValueArgs.iris_colnames_field {mustBeTextScalar} = ''
             end
-            
-            de = DEFile(path, 'memory', NameValueArgs.memory, 'readonly', true, 'read_to_iris', NameValueArgs.read_to_iris, 'iris_colnames_field', NameValueArgs.iris_colnames_field);
+
+            de = DEFile(path, 'memory', NameValueArgs.memory, 'readonly', true, 'read_to_iris', NameValueArgs.read_to_iris, 'read_to_tse', NameValueArgs.read_to_tse, 'iris_colnames_field', NameValueArgs.iris_colnames_field);
             db = de.read();
             de.close();
         end
@@ -421,6 +422,28 @@ classdef DAEC < handle
                         end
                     end 
                 end
+            end
+        end
+
+        function tse_series = make_tse_series(axes, data)
+            % Build a TimeSeriesEcon.m series from DataEcon axes + data.
+            %
+            % 1 range axis        -> tse.TSeries
+            % range x names axes  -> tse.MVTSeries (column names from axis 2)
+            %
+            % Inverse of DEFile.store_tseseries / store_tsemvseries; used by
+            % DEFile read when 'read_to_tse' is set.  The start MIT is built
+            % directly from the axis frequency/first (identity encoding; see
+            % DAEC.tse_date).  Requires the +tse package on the MATLAB path.
+            if numel(axes) == 1
+                start = tse.MIT(int32(axes(1).frequency), int64(axes(1).first));
+                tse_series = tse.TSeries(start, data(:));
+            elseif numel(axes) == 2
+                start = tse.MIT(int32(axes(1).frequency), int64(axes(1).first));
+                tse_series = tse.MVTSeries(start, axes(2).names, data);
+            else
+                error('DataEcon:BadNumAxes', ...
+                    'make_tse_series supports only 1-D (TSeries) or 2-D (MVTSeries) series.');
             end
         end
 

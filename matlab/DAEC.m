@@ -280,6 +280,23 @@ classdef DAEC < handle
                     daec_date = DEDate(DAEC.enums.frequency_t.freq_unit, val);
             end
         end
+
+        function daec_date = daec_from_tse_date(m)
+            % Convert a TimeSeriesEcon.m tse.MIT into a DEDate.
+            %
+            % tse.MIT and DEDate share the same integer encoding: the
+            % frequency codes emitted by +tse/private/freq2int.m are exactly
+            % DataEcon's frequency_t enum, and both store the date as the
+            % same rata die / period-since-epoch integer (0001-01-01 => 1,
+            % the Julia Dates.Date convention that libdaec's dates.c targets).
+            % So the conversion is the identity on (frequency, value) -- no
+            % libdaec date round-trip is required, and this works even when
+            % the native library is not loaded.
+            if ~isa(m, 'tse.MIT')
+                error('DataEcon:BadType', 'daec_from_tse_date expects a tse.MIT.');
+            end
+            daec_date = DEDate(double(m.frequency), int64(m.value));
+        end
     end
 
     methods (Static) % read helpers
@@ -436,6 +453,19 @@ classdef DAEC < handle
                 otherwise
                     error(sprintf('No IRIS conversion available for frequency %s', axis.frequency))
             end
+        end
+
+        function m = tse_date(d)
+            % Convert a DEDate into a TimeSeriesEcon.m tse.MIT.
+            %
+            % Inverse of daec_from_tse_date; see that method for why the
+            % mapping is the identity on (frequency, value).  Requires the
+            % +tse package on the MATLAB path (as make_iris_series requires
+            % the IRIS toolbox), but does not need libdaec loaded.
+            if ~isa(d, 'DEDate')
+                error('DataEcon:BadType', 'tse_date expects a DEDate.');
+            end
+            m = tse.MIT(int32(d.frequency), int64(d.value));
         end
 
     end

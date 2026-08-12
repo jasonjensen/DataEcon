@@ -287,16 +287,60 @@ classdef DAEC < handle
     end
 
     methods (Static) % read helpers
-        function data = extract_array_data(val_ptr, eltype, data_shape)
+        % Read `nelem` 32-bit floats from a library-owned buffer and widen them
+        % to double. There is no library call that reads single-precision data,
+        % so we retype the void pointer in matlab and let it do the copy.
+        % NOTE: lib.pointer is a handle object, so this retypes val_ptr itself.
+        % Every caller uses the value pointer exactly once, which is why that is
+        % safe here - the library only guarantees it until the next call anyway.
+        function vals = read_single_array(val_ptr, nelem)
+            if ~isa(val_ptr, 'lib.pointer')
+                error('DAEC:NotALibPointer', ...
+                    ['expected a lib.pointer to retype as single precision, got %s. ' ...
+                     'Reading 32-bit float data needs a pointer setdatatype can retype.'], ...
+                    class(val_ptr));
+            end
+            setdatatype(val_ptr, 'singlePtr', nelem, 1);
+            vals = double(val_ptr.Value);
+        end
+
+        % Work out how many bytes each stored element occupies. `fallback` is used
+        % when nbytes is unknown, and the result must be one of `allowed`.
+        function elbytes = element_bytes(nbytes, nelem, fallback, allowed, what)
+            if isempty(nbytes) || nelem <= 0
+                elbytes = fallback;
+                return
+            end
+            elbytes = double(nbytes) / double(nelem);
+            if ~ismember(elbytes, allowed)
+                error('DAEC:BadElementSize', ...
+                    'unexpected %s element size: %g bytes (%g bytes over %g elements)', ...
+                    what, elbytes, double(nbytes), double(nelem));
+            end
+        end
+
+        % nbytes is the size of the stored blob. It is the only way to tell a
+        % 32-bit float from a 64-bit one, since both are stored as type_float.
+        % Pass [] when it isn't available, in which case 64-bit is assumed.
+        function data = extract_array_data(val_ptr, eltype, data_shape, nbytes)
             numel = prod(data_shape);
+            if nargin < 4
+                nbytes = [];
+            end
             switch eltype
                 case DAEC.enums.type_t.type_float
-                    data = zeros(data_shape, 'double');
-                    data_ptr = libpointer('doublePtr', data);
-                    [~, data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel, data_ptr);
-                    data = double(data);
-                    if length(data_shape) > 2
-                        data = reshape(data, data_shape);
+                    elbytes = DAEC.element_bytes(nbytes, numel, 8, [4 8], 'float');
+                    if elbytes == 4
+                        % read_single_array returns a flat column, so always reshape
+                        data = reshape(DAEC.read_single_array(val_ptr, numel), data_shape);
+                    else
+                        data = zeros(data_shape, 'double');
+                        data_ptr = libpointer('doublePtr', data);
+                        [~, data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel, data_ptr);
+                        data = double(data);
+                        if length(data_shape) > 2
+                            data = reshape(data, data_shape);
+                        end
                     end
                 case DAEC.enums.type_t.type_signed
                     data = zeros(data_shape, 'int64');
@@ -316,14 +360,21 @@ classdef DAEC < handle
                 case DAEC.enums.type_t.type_string
                     error("Reading a vector/matrix of strings is not supported...")
                 case DAEC.enums.type_t.type_complex
+                    % a complex element is two floats, so 8 bytes when single
+                    % precision and 16 when double
+                    elbytes = DAEC.element_bytes(nbytes, numel, 16, [8 16], 'complex');
                     adjusted_data_shape = data_shape;
                     adjusted_data_shape(end) = data_shape(end)*2;
-                    parted_data = zeros(adjusted_data_shape, 'double');
-                    data_ptr = libpointer('doublePtr', parted_data);
-                    [~, parted_data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel*2, data_ptr);
-                    parted_data = double(parted_data);
-                    if length(data_shape) > 2
-                        parted_data = reshape(parted_data, adjusted_data_shape);
+                    if elbytes == 8
+                        parted_data = reshape(DAEC.read_single_array(val_ptr, numel*2), adjusted_data_shape);
+                    else
+                        parted_data = zeros(adjusted_data_shape, 'double');
+                        data_ptr = libpointer('doublePtr', parted_data);
+                        [~, parted_data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel*2, data_ptr);
+                        parted_data = double(parted_data);
+                        if length(data_shape) > 2
+                            parted_data = reshape(parted_data, adjusted_data_shape);
+                        end
                     end
                     real_idx = repmat({':'}, 1, length(data_shape));
                     imag_idx = repmat({':'}, 1, length(data_shape));

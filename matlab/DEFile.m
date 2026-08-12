@@ -239,7 +239,11 @@ classdef DEFile < handle
             [~, scalar_t] = DAEC.check_call('de_load_scalar', de.ptr, obj_t.id, scalarPtr);
             switch DAEC.enums.type_t.(obj_t.obj_type)
                 case DAEC.enums.type_t.type_float
-                    val = DAEC.call('get_double_from_voidptr', scalar_t.value);
+                    if scalar_t.nbytes == 4
+                        val = DAEC.read_single_array(scalar_t.value, 1);
+                    else
+                        val = DAEC.call('get_double_from_voidptr', scalar_t.value);
+                    end
                 case DAEC.enums.type_t.type_signed
                     val = int64(DAEC.call('get_int64_from_voidptr', scalar_t.value));
                 case DAEC.enums.type_t.type_unsigned
@@ -257,8 +261,15 @@ classdef DEFile < handle
                         end
                     end
                 case DAEC.enums.type_t.type_complex
-                    real_part = DAEC.call('get_complex_real_from_voidptr', scalar_t.value);
-                    imag_part = DAEC.call('get_complex_imag_from_voidptr', scalar_t.value);
+                    if scalar_t.nbytes == 8
+                        % single precision: two 4-byte floats
+                        parts = DAEC.read_single_array(scalar_t.value, 2);
+                        real_part = parts(1);
+                        imag_part = parts(2);
+                    else
+                        real_part = DAEC.call('get_complex_real_from_voidptr', scalar_t.value);
+                        imag_part = DAEC.call('get_complex_imag_from_voidptr', scalar_t.value);
+                    end
                     val = complex(real_part, imag_part);
                 case DAEC.enums.type_t.type_date
                     val = int64(DAEC.call('get_int64_from_voidptr', scalar_t.value));
@@ -296,7 +307,7 @@ classdef DEFile < handle
             elfreq = DAEC.enums.frequency_t.(tseries_t.elfreq);
             data_shape = [tseries_t.axis.length 1];
 
-            data = DAEC.extract_array_data(tseries_t.value, DAEC.enums.type_t.(tseries_t.eltype), data_shape);
+            data = DAEC.extract_array_data(tseries_t.value, DAEC.enums.type_t.(tseries_t.eltype), data_shape, tseries_t.nbytes);
             
             if elfreq ~= DAEC.enums.frequency_t.freq_none
                 data = DAEC.to_date_array(data, elfreq, data_shape);
@@ -334,7 +345,7 @@ classdef DEFile < handle
 
             data_shape = [mvtseries_t.axis1.length mvtseries_t.axis2.length];
             
-            data = DAEC.extract_array_data(mvtseries_t.value, DAEC.enums.type_t.(mvtseries_t.eltype), data_shape);
+            data = DAEC.extract_array_data(mvtseries_t.value, DAEC.enums.type_t.(mvtseries_t.eltype), data_shape, mvtseries_t.nbytes);
             
             if elfreq ~= DAEC.enums.frequency_t.freq_none
                 data = DAEC.to_date_array(data, elfreq, data_shape);
@@ -391,6 +402,10 @@ classdef DEFile < handle
             % get value
             value_ptr = libpointer('voidPtrPtr', 0);
             [~, value] = DAEC.check_call('de_load_ndtseries_value', de.ptr, obj_t.id, value_ptr);
+            % TODO: nbytes is not retrievable for ndtseries - de_load_ndtseries_value
+            % doesn't return it and the full ndtseries_t struct doesn't marshal - so
+            % 32-bit float ndtseries (e.g. written from julia) are still misread here.
+            % Needs a de_load_ndtseries_nbytes accessor in the library.
             data = DAEC.extract_array_data(value_ptr, eltype, data_shape);
 
             if elfreq ~= DAEC.enums.frequency_t.freq_none

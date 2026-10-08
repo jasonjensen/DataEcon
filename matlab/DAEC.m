@@ -476,11 +476,11 @@ classdef DAEC < handle
                 end_date = start_date + (axes(1).length - 1);
                 if make_tseries
                     if end_date >= start_date
-                       iris_series = tseries(start_date:end_date, Inf);
+                        iris_series = tseries(start_date:end_date, Inf);
                         iris_series.data = data;
                     else % some series have no data
                         iris_series = tseries(start_date:end_date, data);
-                    end 
+                    end
                     iris_series.Comment = axes(2).names;
                 else
                     iris_series = Series(start_date:end_date, data);

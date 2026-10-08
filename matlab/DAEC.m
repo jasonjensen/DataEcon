@@ -13,6 +13,9 @@ classdef DAEC < handle
     properties
         libname
         debug_
+        % How to handle a frequency with no IRIS equivalent when converting
+        % dates: 'error' (default) or 'unit' to index by unit instead.
+        iris_unsupported_freq_
     end
 
     properties (Constant)
@@ -30,17 +33,25 @@ classdef DAEC < handle
                     inst.libname = 'libdaec';
             end
             inst.debug_ = false;
+            inst.iris_unsupported_freq_ = 'error';
         end
     end
 
     methods (Static)
 
-        function daec = load(daecroot)
+        function daec = load(daecroot, o)
             arguments
                 daecroot {mustBeFolder} = '.';
+                % What to do with a frequency that has no IRIS equivalent.
+                % 'error' refuses to guess; 'unit' falls back to unit
+                % indexing, which keeps reading going but yields dates that
+                % are wrong rather than absent, so it is opt-in.
+                o.iris_unsupported_freq {mustBeMember(o.iris_unsupported_freq, {'error','unit'})} = 'error'
             end
-            % nothing to do if library is already loaded
             daec = DAEC.instance;
+            % set before the early return, so a later load() can change it
+            daec.iris_unsupported_freq_ = o.iris_unsupported_freq;
+            % nothing else to do if library is already loaded
             if libisloaded(daec.libname)
                 return
             end
@@ -85,7 +96,20 @@ classdef DAEC < handle
                 inst.debug_ = tf;
             end
         end
-        
+
+        % Get or set what happens when a frequency has no IRIS equivalent.
+        % Called with no argument it only reads. Setting returns the previous
+        % value, so it can be restored:
+        %   old = DAEC.iris_unsupported_freq('unit');
+        function oldval = iris_unsupported_freq(mode)
+            inst = DAEC.instance;
+            oldval = inst.iris_unsupported_freq_;
+            if nargin > 0
+                mustBeMember(mode, {'error','unit'});
+                inst.iris_unsupported_freq_ = mode;
+            end
+        end
+
         function db = readdb(path, NameValueArgs)
             arguments 
                 path {mustBeTextScalar} = ''
@@ -550,8 +574,23 @@ classdef DAEC < handle
                     [year, month, day] = DAEC.check_call('de_unpack_calendar_date', axis.frequency, axis.first, year_ptr, month_ptr, day_ptr);
                     iris_date_obj = dd(double(year), double(month), double(day));
                 otherwise
-                    iris_date_obj = daec_start; % use unit indexing for all unsupported frequencies 
-                    % error(sprintf('No IRIS conversion available for frequency %s', axis.frequency))
+                    if axis.frequency == DAEC.enums.frequency_t.freq_unit
+                        % freq_unit carries no calendar meaning, so unit
+                        % indexing is its accurate representation rather
+                        % than a guess - no opt-in needed.
+                        iris_date_obj = daec_start;
+                    elseif strcmp(DAEC.iris_unsupported_freq(), 'unit')
+                        % Opt-in: index by unit rather than refusing. The
+                        % dates this produces are not the series' real dates,
+                        % so only enable it where that is acceptable.
+                        iris_date_obj = daec_start;
+                    else
+                        error('DataEcon:NoIrisFreq', ...
+                            ['No IRIS conversion available for frequency %s. ' ...
+                             'Pass iris_unsupported_freq="unit" to DAEC.load to ' ...
+                             'index such frequencies by unit instead.'], ...
+                            string(axis.frequency));
+                    end
             end
         end
 

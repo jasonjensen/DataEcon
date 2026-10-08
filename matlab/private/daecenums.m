@@ -14,21 +14,21 @@ if isempty(enums)
     enums.frequency_convert.to_iris = zeros(300, 1);
      % Yearly frequencies (256-268)
     for i = enums.frequency_t.freq_yearly:enums.frequency_t.freq_yearly_dec
-        enums.frequency_convert.to_iris(i+1) = 1;
+        enums.frequency_convert.to_iris(i) = 1;
     end
     % Half-yearly frequencies (128-134)  
     for i = enums.frequency_t.freq_halfyearly:enums.frequency_t.freq_halfyearly_dec
-        enums.frequency_convert.to_iris(i+1) = 2;
+        enums.frequency_convert.to_iris(i) = 2;
     end
     % Quarterly frequencies (64-67)
     for i = enums.frequency_t.freq_quarterly:enums.frequency_t.freq_quarterly_dec
-        enums.frequency_convert.to_iris(i+1) = 4;
+        enums.frequency_convert.to_iris(i) = 4;
     end
     % Monthly frequency (32)
     enums.frequency_convert.to_iris(enums.frequency_t.freq_monthly) = 12;
     % Weekly frequencies (16-23)
     for i = enums.frequency_t.freq_weekly:enums.frequency_t.freq_weekly_sun
-        enums.frequency_convert.to_iris(i+1) = 52;
+        enums.frequency_convert.to_iris(i) = 52;
     end
     % Daily frequencies
     enums.frequency_convert.to_iris(enums.frequency_t.freq_daily) = 365;

@@ -13,6 +13,9 @@ classdef DAEC < handle
     properties
         libname
         debug_
+        % How to handle a frequency with no IRIS equivalent when converting
+        % dates: 'error' (default) or 'unit' to index by unit instead.
+        iris_unsupported_freq_
     end
 
     properties (Constant)
@@ -30,17 +33,25 @@ classdef DAEC < handle
                     inst.libname = 'libdaec';
             end
             inst.debug_ = false;
+            inst.iris_unsupported_freq_ = 'error';
         end
     end
 
     methods (Static)
 
-        function daec = load(daecroot)
+        function daec = load(daecroot, o)
             arguments
                 daecroot {mustBeFolder} = '.';
+                % What to do with a frequency that has no IRIS equivalent.
+                % 'error' refuses to guess; 'unit' falls back to unit
+                % indexing, which keeps reading going but yields dates that
+                % are wrong rather than absent, so it is opt-in.
+                o.iris_unsupported_freq {mustBeMember(o.iris_unsupported_freq, {'error','unit'})} = 'error'
             end
-            % nothing to do if library is already loaded
             daec = DAEC.instance;
+            % set before the early return, so a later load() can change it
+            daec.iris_unsupported_freq_ = o.iris_unsupported_freq;
+            % nothing else to do if library is already loaded
             if libisloaded(daec.libname)
                 return
             end
@@ -85,7 +96,20 @@ classdef DAEC < handle
                 inst.debug_ = tf;
             end
         end
-        
+
+        % Get or set what happens when a frequency has no IRIS equivalent.
+        % Called with no argument it only reads. Setting returns the previous
+        % value, so it can be restored:
+        %   old = DAEC.iris_unsupported_freq('unit');
+        function oldval = iris_unsupported_freq(mode)
+            inst = DAEC.instance;
+            oldval = inst.iris_unsupported_freq_;
+            if nargin > 0
+                mustBeMember(mode, {'error','unit'});
+                inst.iris_unsupported_freq_ = mode;
+            end
+        end
+
         function db = readdb(path, NameValueArgs)
             arguments 
                 path {mustBeTextScalar} = ''
@@ -284,19 +308,80 @@ classdef DAEC < handle
                     daec_date = DEDate(DAEC.enums.frequency_t.freq_unit, val);
             end
         end
+
+        function daec_date = daec_from_tse_date(m)
+            % Convert a TimeSeriesEcon.m tse.MIT into a DEDate.
+            %
+            % tse.MIT and DEDate share the same integer encoding: the
+            % frequency codes emitted by +tse/private/freq2int.m are exactly
+            % DataEcon's frequency_t enum, and both store the date as the
+            % same rata die / period-since-epoch integer (0001-01-01 => 1,
+            % the Julia Dates.Date convention that libdaec's dates.c targets).
+            % So the conversion is the identity on (frequency, value) -- no
+            % libdaec date round-trip is required, and this works even when
+            % the native library is not loaded.
+            if ~isa(m, 'tse.MIT')
+                error('DataEcon:BadType', 'daec_from_tse_date expects a tse.MIT.');
+            end
+            daec_date = DEDate(double(m.frequency), int64(m.value));
+        end
     end
 
     methods (Static) % read helpers
-        function data = extract_array_data(val_ptr, eltype, data_shape)
+        % Read `nelem` 32-bit floats from a library-owned buffer and widen them
+        % to double. There is no library call that reads single-precision data,
+        % so we retype the void pointer in matlab and let it do the copy.
+        % NOTE: lib.pointer is a handle object, so this retypes val_ptr itself.
+        % Every caller uses the value pointer exactly once, which is why that is
+        % safe here - the library only guarantees it until the next call anyway.
+        function vals = read_single_array(val_ptr, nelem)
+            if ~isa(val_ptr, 'lib.pointer')
+                error('DAEC:NotALibPointer', ...
+                    ['expected a lib.pointer to retype as single precision, got %s. ' ...
+                     'Reading 32-bit float data needs a pointer setdatatype can retype.'], ...
+                    class(val_ptr));
+            end
+            setdatatype(val_ptr, 'singlePtr', nelem, 1);
+            vals = double(val_ptr.Value);
+        end
+
+        % Work out how many bytes each stored element occupies. `fallback` is used
+        % when nbytes is unknown, and the result must be one of `allowed`.
+        function elbytes = element_bytes(nbytes, nelem, fallback, allowed, what)
+            if isempty(nbytes) || nelem <= 0
+                elbytes = fallback;
+                return
+            end
+            elbytes = double(nbytes) / double(nelem);
+            if ~ismember(elbytes, allowed)
+                error('DAEC:BadElementSize', ...
+                    'unexpected %s element size: %g bytes (%g bytes over %g elements)', ...
+                    what, elbytes, double(nbytes), double(nelem));
+            end
+        end
+
+        % nbytes is the size of the stored blob. It is the only way to tell a
+        % 32-bit float from a 64-bit one, since both are stored as type_float.
+        % Pass [] when it isn't available, in which case 64-bit is assumed.
+        function data = extract_array_data(val_ptr, eltype, data_shape, nbytes)
             numel = prod(data_shape);
+            if nargin < 4
+                nbytes = [];
+            end
             switch eltype
                 case DAEC.enums.type_t.type_float
-                    data = zeros(data_shape, 'double');
-                    data_ptr = libpointer('doublePtr', data);
-                    [~, data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel, data_ptr);
-                    data = double(data);
-                    if length(data_shape) > 2
-                        data = reshape(data, data_shape);
+                    elbytes = DAEC.element_bytes(nbytes, numel, 8, [4 8], 'float');
+                    if elbytes == 4
+                        % read_single_array returns a flat column, so always reshape
+                        data = reshape(DAEC.read_single_array(val_ptr, numel), data_shape);
+                    else
+                        data = zeros(data_shape, 'double');
+                        data_ptr = libpointer('doublePtr', data);
+                        [~, data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel, data_ptr);
+                        data = double(data);
+                        if length(data_shape) > 2
+                            data = reshape(data, data_shape);
+                        end
                     end
                 case DAEC.enums.type_t.type_signed
                     data = zeros(data_shape, 'int64');
@@ -316,14 +401,21 @@ classdef DAEC < handle
                 case DAEC.enums.type_t.type_string
                     error("Reading a vector/matrix of strings is not supported...")
                 case DAEC.enums.type_t.type_complex
+                    % a complex element is two floats, so 8 bytes when single
+                    % precision and 16 when double
+                    elbytes = DAEC.element_bytes(nbytes, numel, 16, [8 16], 'complex');
                     adjusted_data_shape = data_shape;
                     adjusted_data_shape(end) = data_shape(end)*2;
-                    parted_data = zeros(adjusted_data_shape, 'double');
-                    data_ptr = libpointer('doublePtr', parted_data);
-                    [~, parted_data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel*2, data_ptr);
-                    parted_data = double(parted_data);
-                    if length(data_shape) > 2
-                        parted_data = reshape(parted_data, adjusted_data_shape);
+                    if elbytes == 8
+                        parted_data = reshape(DAEC.read_single_array(val_ptr, numel*2), adjusted_data_shape);
+                    else
+                        parted_data = zeros(adjusted_data_shape, 'double');
+                        data_ptr = libpointer('doublePtr', parted_data);
+                        [~, parted_data] = DAEC.call('get_double_array_from_voidptr', val_ptr, numel*2, data_ptr);
+                        parted_data = double(parted_data);
+                        if length(data_shape) > 2
+                            parted_data = reshape(parted_data, adjusted_data_shape);
+                        end
                     end
                     real_idx = repmat({':'}, 1, length(data_shape));
                     imag_idx = repmat({':'}, 1, length(data_shape));
@@ -374,8 +466,12 @@ classdef DAEC < handle
                 start_date = DAEC.iris_date(iris_freq, axes);
                 end_date = start_date + (axes.length - 1);
                 if make_tseries
-                    iris_series = tseries(start_date:end_date, Inf);
-                    iris_series.data = data;
+                    if end_date >= start_date
+                        iris_series = tseries(start_date:end_date, Inf);
+                        iris_series.data = data;
+                    else % some series have no data
+                        iris_series = tseries(start_date:end_date, data);
+                    end
                     if isfield(attr, 'Comment')
                         if isa(attr.Comment, 'char')
                             iris_series.Comment = {attr.Comment};
@@ -403,8 +499,12 @@ classdef DAEC < handle
                 start_date = DAEC.iris_date(iris_freq, axes(1));
                 end_date = start_date + (axes(1).length - 1);
                 if make_tseries
-                    iris_series = tseries(start_date:end_date, Inf);
-                    iris_series.data = data;
+                    if end_date >= start_date
+                        iris_series = tseries(start_date:end_date, Inf);
+                        iris_series.data = data;
+                    else % some series have no data
+                        iris_series = tseries(start_date:end_date, data);
+                    end
                     iris_series.Comment = axes(2).names;
                 else
                     iris_series = Series(start_date:end_date, data);
@@ -422,6 +522,28 @@ classdef DAEC < handle
                         end
                     end 
                 end
+            end
+        end
+
+        function tse_series = make_tse_series(axes, data)
+            % Build a TimeSeriesEcon.m series from DataEcon axes + data.
+            %
+            % 1 range axis        -> tse.TSeries
+            % range x names axes  -> tse.MVTSeries (column names from axis 2)
+            %
+            % Inverse of DEFile.store_tseseries / store_tsemvseries; used by
+            % DEFile read when 'read_to_tse' is set.  The start MIT is built
+            % directly from the axis frequency/first (identity encoding; see
+            % DAEC.tse_date).  Requires the +tse package on the MATLAB path.
+            if numel(axes) == 1
+                start = tse.MIT(int32(axes(1).frequency), int64(axes(1).first));
+                tse_series = tse.TSeries(start, data(:));
+            elseif numel(axes) == 2
+                start = tse.MIT(int32(axes(1).frequency), int64(axes(1).first));
+                tse_series = tse.MVTSeries(start, axes(2).names, data);
+            else
+                error('DataEcon:BadNumAxes', ...
+                    'make_tse_series supports only 1-D (TSeries) or 2-D (MVTSeries) series.');
             end
         end
 
@@ -452,8 +574,37 @@ classdef DAEC < handle
                     [year, month, day] = DAEC.check_call('de_unpack_calendar_date', axis.frequency, axis.first, year_ptr, month_ptr, day_ptr);
                     iris_date_obj = dd(double(year), double(month), double(day));
                 otherwise
-                    error(sprintf('No IRIS conversion available for frequency %s', axis.frequency))
+                    if axis.frequency == DAEC.enums.frequency_t.freq_unit
+                        % freq_unit carries no calendar meaning, so unit
+                        % indexing is its accurate representation rather
+                        % than a guess - no opt-in needed.
+                        iris_date_obj = daec_start;
+                    elseif strcmp(DAEC.iris_unsupported_freq(), 'unit')
+                        % Opt-in: index by unit rather than refusing. The
+                        % dates this produces are not the series' real dates,
+                        % so only enable it where that is acceptable.
+                        iris_date_obj = daec_start;
+                    else
+                        error('DataEcon:NoIrisFreq', ...
+                            ['No IRIS conversion available for frequency %s. ' ...
+                             'Pass iris_unsupported_freq="unit" to DAEC.load to ' ...
+                             'index such frequencies by unit instead.'], ...
+                            string(axis.frequency));
+                    end
             end
+        end
+
+        function m = tse_date(d)
+            % Convert a DEDate into a TimeSeriesEcon.m tse.MIT.
+            %
+            % Inverse of daec_from_tse_date; see that method for why the
+            % mapping is the identity on (frequency, value).  Requires the
+            % +tse package on the MATLAB path (as make_iris_series requires
+            % the IRIS toolbox), but does not need libdaec loaded.
+            if ~isa(d, 'DEDate')
+                error('DataEcon:BadType', 'tse_date expects a DEDate.');
+            end
+            m = tse.MIT(int32(d.frequency), int64(d.value));
         end
 
     end

@@ -15,6 +15,8 @@ gdp_data = 100 + cumsum(0.5 + 0.2*randn(24,1));
 test_struct.iris_tseries.quarterly = tseries(qq(2000,1):qq(2005,4), 100 + cumsum(0.5 + 0.2*randn(24,1)));
 test_struct.iris_tseries.quarterly.Comment = 'Real GDP (index, q/q cumulative)';
 
+test_struct.iris_tseries.halfyearly = tseries(hh(2000,1):hh(2011,2), 100 + cumsum(0.5 + 0.2*randn(24,1)));
+
 test_struct.iris_tseries.weekly = tseries(ww(2021,1):ww(2021,10), rand(10,1));
 test_struct.iris_tseries.daily = tseries(dd(2023,1,1):dd(2023,1,15), 100 + cumsum(0.1 + 0.05*randn(15,1)));
 test_struct.iris_tseries.daily.Comment = 'Real GDP (index, daily)';
@@ -26,6 +28,7 @@ test_struct.iris_tseries.quarterly_mvts = tseries(qq(2000,1):qq(2005,4), [0.2*ra
 test_struct.iris_tseries.quarterly_mvts.Comment = {'OutputGap', 'Inflation'}; % tseries stores column names in Comment
 
 % Series object
+test_struct.iris_series.halfyearly = Series(hh(2000,1):hh(2011,2), 100 + cumsum(0.5 + 0.2*randn(24,1)));
 test_struct.iris_series.quarterly = Series(qq(2000,1):qq(2005,4), 100 + cumsum(0.5 + 0.2*randn(24,1)));
 test_struct.iris_series.quarterly.Comment = 'Real GDP (index, q/q cumulative)';
 test_struct.iris_series.weekly = Series(ww(2021,1):ww(2021,10), rand(10,1));

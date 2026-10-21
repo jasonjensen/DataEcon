@@ -33,6 +33,7 @@ raw_complex_vec = [complex(1.25, -2.5); complex(0.1, 0.2); complex(100.375, -3.5
 raw_complex_mat = complex(raw_mat, -raw_mat);
 
 % what a correct read must return: the double value of the stored single
+expected = struct();
 expected.vectors.f32_plain = double(single(raw_vals(:)));
 expected.vectors.f64_plain = raw_vals(:);
 expected.vectors.c32_plain = as_single_complex(raw_complex_vec);

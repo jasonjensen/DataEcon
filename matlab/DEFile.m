@@ -244,17 +244,21 @@ classdef DEFile < handle
             scalarStruct.object = obj_t;
             scalarPtr = libpointer('scalar_t', scalarStruct);
             [~, scalar_t] = DAEC.check_call('de_load_scalar', de.ptr, obj_t.id, scalarPtr);
+            % The stored width (nbytes) tells the element type apart, as in
+            % DataEcon.jl: integers are 1, 2, 4 or 8 bytes, floats 2, 4 or 8, and
+            % complex numbers are a pair of those. Integers widen to int64 or
+            % uint64 and floats to double, so a value reads the same whatever
+            % width julia stored it in. 16-byte integers have no matlab type.
             switch DAEC.enums.type_t.(obj_t.obj_type)
                 case DAEC.enums.type_t.type_float
-                    if scalar_t.nbytes == 4
-                        val = DAEC.read_single_array(scalar_t.value, 1);
-                    else
-                        val = DAEC.call('get_double_from_voidptr', scalar_t.value);
-                    end
+                    elbytes = DAEC.element_bytes(scalar_t.nbytes, 1, 8, [2 4 8], 'float scalar');
+                    val = DAEC.read_float_array(scalar_t.value, 1, elbytes);
                 case DAEC.enums.type_t.type_signed
-                    val = int64(DAEC.call('get_int64_from_voidptr', scalar_t.value));
+                    elbytes = DAEC.element_bytes(scalar_t.nbytes, 1, 8, [1 2 4 8], 'signed integer scalar');
+                    val = int64(DAEC.read_typed_array(scalar_t.value, sprintf('int%d', 8 * elbytes), 1));
                 case DAEC.enums.type_t.type_unsigned
-                    val = uint64(DAEC.call('get_uint64_from_voidptr', scalar_t.value));
+                    elbytes = DAEC.element_bytes(scalar_t.nbytes, 1, 8, [1 2 4 8], 'unsigned integer scalar');
+                    val = uint64(DAEC.read_typed_array(scalar_t.value, sprintf('uint%d', 8 * elbytes), 1));
                 case DAEC.enums.type_t.type_string
                     val = DAEC.call('get_string_from_voidptr', scalar_t.value);
                     if isempty(val)
@@ -268,17 +272,13 @@ classdef DEFile < handle
                         end
                     end
                 case DAEC.enums.type_t.type_complex
-                    if scalar_t.nbytes == 8
-                        % single precision: two 4-byte floats
-                        parts = DAEC.read_single_array(scalar_t.value, 2);
-                        real_part = parts(1);
-                        imag_part = parts(2);
-                    else
-                        real_part = DAEC.call('get_complex_real_from_voidptr', scalar_t.value);
-                        imag_part = DAEC.call('get_complex_imag_from_voidptr', scalar_t.value);
-                    end
+                    elbytes = DAEC.element_bytes(scalar_t.nbytes, 1, 16, [4 8 16], 'complex scalar');
+                    parts = DAEC.read_float_array(scalar_t.value, 2, elbytes / 2);
+                    real_part = parts(1);
+                    imag_part = parts(2);
                     val = complex(real_part, imag_part);
                 case DAEC.enums.type_t.type_date
+                    DAEC.element_bytes(scalar_t.nbytes, 1, 8, 8, 'date scalar');
                     val = int64(DAEC.call('get_int64_from_voidptr', scalar_t.value));
                     freq = DAEC.enums.frequency_t.(scalar_t.frequency);
                     if freq ~= DAEC.enums.frequency_t.freq_none
@@ -326,7 +326,7 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_range
                     if de.read_to_iris
                         attr = get_all_attributes(de, obj_t.id);
-                        val = DAEC.make_iris_series(DEAxis(tseries_t.axis), data, attr);
+                        val = DAEC.make_iris_series(DEAxis(tseries_t.axis), data, attr, obj_t.name);
                     elseif de.read_to_tse
                         val = DAEC.make_tse_series(DEAxis(tseries_t.axis), data);
                     else
@@ -365,7 +365,7 @@ classdef DEFile < handle
                 val = data;
             elseif de.read_to_iris
                 attr = get_all_attributes(de, obj_t.id);
-                val = DAEC.make_iris_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data, attr);
+                val = DAEC.make_iris_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data, attr, obj_t.name);
             elseif de.read_to_tse
                 val = DAEC.make_tse_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             else
@@ -374,7 +374,6 @@ classdef DEFile < handle
         end
 
         function val = retrieve_ndarray(de, obj_t)
-
             % get axis ids
             axis_ids_ptr = libpointer('int64Ptr', repmat(0, 1, DAEC.max_axes));
             [~, axis_ids, ] = DAEC.check_call('de_load_ndtseries_axis_ids', de.ptr, obj_t.id, axis_ids_ptr);
@@ -409,7 +408,20 @@ classdef DEFile < handle
 
             eltype = DAEC.enums.type_t.(eltype_str);
             elfreq = DAEC.enums.frequency_t.(elfreq_str);
-            
+
+            % Without nbytes (see the TODO below) the width of numeric elements
+            % is unknown, so they are read as 8 bytes. Strings and dates are not
+            % affected.
+            T = DAEC.enums.type_t;
+            if ismember(eltype, [T.type_float, T.type_complex, T.type_signed, T.type_unsigned]) ...
+                    && elfreq == DAEC.enums.frequency_t.freq_none
+                bt = warning('off', 'backtrace');
+                warning('DataEcon:NDSeriesWidth', ...
+                    ['Element width unknown for N-d array %s; assuming 8-byte values ' ...
+                     '(Float64, Int64/UInt64 or ComplexF64).'], obj_t.name);
+                warning(bt);   % restore the caller's backtrace setting
+            end
+
             % get value
             value_ptr = libpointer('voidPtrPtr', 0);
             [~, value] = DAEC.check_call('de_load_ndtseries_value', de.ptr, obj_t.id, value_ptr);

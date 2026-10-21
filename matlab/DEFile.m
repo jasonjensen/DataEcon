@@ -374,11 +374,6 @@ classdef DEFile < handle
         end
 
         function val = retrieve_ndarray(de, obj_t)
-            bt = warning('off', 'backtrace');
-            warning('DataEcon:NDSeriesFloat32', ...
-                'All NDarrays are assumed to be composed of Float64 values.');
-            warning(bt);   % restore the caller's backtrace setting
-
             % get axis ids
             axis_ids_ptr = libpointer('int64Ptr', repmat(0, 1, DAEC.max_axes));
             [~, axis_ids, ] = DAEC.check_call('de_load_ndtseries_axis_ids', de.ptr, obj_t.id, axis_ids_ptr);
@@ -413,7 +408,20 @@ classdef DEFile < handle
 
             eltype = DAEC.enums.type_t.(eltype_str);
             elfreq = DAEC.enums.frequency_t.(elfreq_str);
-            
+
+            % Without nbytes (see the TODO below) the width of numeric elements
+            % is unknown, so they are read as 8 bytes. Strings and dates are not
+            % affected.
+            T = DAEC.enums.type_t;
+            if ismember(eltype, [T.type_float, T.type_complex, T.type_signed, T.type_unsigned]) ...
+                    && elfreq == DAEC.enums.frequency_t.freq_none
+                bt = warning('off', 'backtrace');
+                warning('DataEcon:NDSeriesWidth', ...
+                    ['Element width unknown for N-d array %s; assuming 8-byte values ' ...
+                     '(Float64, Int64/UInt64 or ComplexF64).'], obj_t.name);
+                warning(bt);   % restore the caller's backtrace setting
+            end
+
             % get value
             value_ptr = libpointer('voidPtrPtr', 0);
             [~, value] = DAEC.check_call('de_load_ndtseries_value', de.ptr, obj_t.id, value_ptr);

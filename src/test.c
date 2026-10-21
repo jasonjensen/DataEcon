@@ -68,6 +68,21 @@ void check_scalar(scalar_t scalar, int64_t id, type_t type, frequency_t frequenc
     ++checks;
 }
 
+/* CHECK_SCALAR compares scalar.nbytes bytes against the expected value, so a
+   reader that reports the wrong element width is not caught by it - it would
+   just memcmp the wrong length. These variants assert the width explicitly,
+   which is what distinguishes a single- from a double-precision blob. */
+#define CHECK_SCALAR_NBYTES(scalar, id, type, frequency, value, nbytes) \
+    check_scalar_nbytes(scalar, id, type, frequency, value, nbytes, __FILE__, __LINE__)
+void check_scalar_nbytes(scalar_t scalar, int64_t id, type_t type, frequency_t frequency, void *value,
+                         int64_t nbytes, const char *file, int line)
+{
+    if (scalar.nbytes != nbytes)
+        fail(file, line, "Scalar nbytes doesn't match the stored element width.");
+    ++checks;
+    check_scalar(scalar, id, type, frequency, value, file, line);
+}
+
 #define CHECK_AXIS(axis, id, type, length, frequency, first, names) check_axis(axis, id, type, length, frequency, first, names, __FILE__, __LINE__)
 void check_axis(axis_t axis, axis_id_t id, axis_type_t type, int64_t length, frequency_t frequency, int64_t first, const char *names, const char *file, int line)
 {
@@ -766,6 +781,176 @@ int main(void)
         CHECK(de_store_ndtseries(de, cata, "onetwothreeoneoneone", type_tensor,
                                          type_float, freq_none, 6, ax,
                                          sizeof values, values, &_id), DE_BAD_NUM_AXES);
+    }
+
+    /* test 32-bit float round-trips
+
+       The library stores numeric values as an opaque blob and reports
+       type_float for both single and double precision, so the only thing that
+       tells the two apart on read-back is nbytes divided by the element count.
+       A reader that assumes double (as the matlab and julia bindings once did)
+       produces garbage values and over-reads the blob by a factor of two.
+       These cases pin the write-then-read contract for every container shape in
+       both widths: the bytes must come back identical, and nbytes must report
+       the width that was actually stored. type_complex is covered here too,
+       because its element is a *pair* of floats - 8 bytes single, 16 double -
+       which is the easiest width for a reader to get wrong. */
+    {
+        int64_t cata;
+        CHECK_SUCCESS(de_new_catalog(de, 0, "float32", &cata));
+
+        obj_id_t _id;
+        axis_id_t ax, ax1, ax2, axn[3];
+        scalar_t scalar;
+        tseries_t ts;
+        mvtseries_t mv;
+        ndtseries_t nd;
+
+        /* Values whose single-precision representation differs from their
+           double-precision one, so that reading at the wrong width cannot
+           coincidentally produce the right answer. */
+        double dvals[6] = {0.1, 0.2, 1.5, 2.25, 100.375, -3.5};
+        float fvals[6];
+        for (int i = 0; i < 6; ++i)
+            fvals[i] = (float)dvals[i];
+        FAIL_IF((double)fvals[0] == dvals[0], "0.1 must not be exact in single precision.");
+
+        /* --- scalars ------------------------------------------------------ */
+        CHECK_SUCCESS(de_store_scalar(de, cata, "f32_scalar", type_float, freq_none, sizeof fvals[0], &fvals[0], &_id));
+        CHECK_SUCCESS(de_load_scalar(de, _id, &scalar));
+        CHECK_SCALAR_NBYTES(scalar, _id, type_float, freq_none, &fvals[0], (int64_t)sizeof(float));
+        FAIL_IF(*(float *)scalar.value != fvals[0], "f32 scalar value doesn't round-trip.");
+
+        CHECK_SUCCESS(de_store_scalar(de, cata, "f64_scalar", type_float, freq_none, sizeof dvals[0], &dvals[0], &_id));
+        CHECK_SUCCESS(de_load_scalar(de, _id, &scalar));
+        CHECK_SCALAR_NBYTES(scalar, _id, type_float, freq_none, &dvals[0], (int64_t)sizeof(double));
+        FAIL_IF(*(double *)scalar.value != dvals[0], "f64 scalar value doesn't round-trip.");
+
+        /* a complex single is two 4-byte floats, a complex double two 8-byte ones */
+        float fcplx[2] = {1.25f, -2.5f};
+        double dcplx[2] = {0.1, -0.2};
+        CHECK_SUCCESS(de_store_scalar(de, cata, "c32_scalar", type_complex, freq_none, sizeof fcplx, fcplx, &_id));
+        CHECK_SUCCESS(de_load_scalar(de, _id, &scalar));
+        CHECK_SCALAR_NBYTES(scalar, _id, type_complex, freq_none, fcplx, 2 * (int64_t)sizeof(float));
+
+        CHECK_SUCCESS(de_store_scalar(de, cata, "c64_scalar", type_complex, freq_none, sizeof dcplx, dcplx, &_id));
+        CHECK_SUCCESS(de_load_scalar(de, _id, &scalar));
+        CHECK_SCALAR_NBYTES(scalar, _id, type_complex, freq_none, dcplx, 2 * (int64_t)sizeof(double));
+
+        /* --- vectors and tseries ------------------------------------------ */
+        CHECK_SUCCESS(de_axis_plain(de, 6, &ax));
+        CHECK_SUCCESS(de_store_tseries(de, cata, "f32_vector", type_vector, type_float, freq_none, ax, sizeof fvals, fvals, &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts));
+        CHECK_TSERIES(ts, _id, type_vector, type_float, freq_none, sizeof fvals[0], ax, fvals);
+
+        CHECK_SUCCESS(de_store_tseries(de, cata, "f64_vector", type_vector, type_float, freq_none, ax, sizeof dvals, dvals, &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts));
+        CHECK_TSERIES(ts, _id, type_vector, type_float, freq_none, sizeof dvals[0], ax, dvals);
+
+        /* the same values on a dated axis - a tseries proper, not a plain vector */
+        CHECK_SUCCESS(de_axis_range(de, 6, freq_quarterly, 2020 * 4 + 1, &ax));
+        CHECK_SUCCESS(de_store_tseries(de, cata, "f32_tseries", type_tseries, type_float, freq_none, ax, sizeof fvals, fvals, &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts));
+        CHECK_TSERIES(ts, _id, type_tseries, type_float, freq_none, sizeof fvals[0], ax, fvals);
+        for (int i = 0; i < 6; ++i)
+            FAIL_IF(((float *)ts.value)[i] != fvals[i], "f32 tseries value doesn't round-trip.");
+
+        CHECK_SUCCESS(de_store_tseries(de, cata, "f64_tseries", type_tseries, type_float, freq_none, ax, sizeof dvals, dvals, &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts));
+        CHECK_TSERIES(ts, _id, type_tseries, type_float, freq_none, sizeof dvals[0], ax, dvals);
+
+        /* complex vectors: 3 elements held as 6 interleaved re/im parts */
+        float fcv[6] = {1.25f, -2.5f, 0.1f, 0.2f, 100.375f, -3.5f};
+        double dcv[6] = {1.25, -2.5, 0.1, 0.2, 100.375, -3.5};
+        CHECK_SUCCESS(de_axis_plain(de, 3, &ax));
+        CHECK_SUCCESS(de_store_tseries(de, cata, "c32_vector", type_vector, type_complex, freq_none, ax, sizeof fcv, fcv, &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts));
+        CHECK_TSERIES(ts, _id, type_vector, type_complex, freq_none, 2 * (int64_t)sizeof(float), ax, fcv);
+
+        CHECK_SUCCESS(de_store_tseries(de, cata, "c64_vector", type_vector, type_complex, freq_none, ax, sizeof dcv, dcv, &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts));
+        CHECK_TSERIES(ts, _id, type_vector, type_complex, freq_none, 2 * (int64_t)sizeof(double), ax, dcv);
+
+        /* --- matrices / mvtseries ----------------------------------------- */
+        float fmat[3][2];
+        double dmat[3][2];
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 2; ++j)
+            {
+                dmat[i][j] = dvals[i * 2 + j];
+                fmat[i][j] = (float)dmat[i][j];
+            }
+        CHECK_SUCCESS(de_axis_range(de, 3, freq_monthly, 550, &ax1));
+        CHECK_SUCCESS(de_axis_plain(de, 2, &ax2));
+        CHECK_SUCCESS(de_store_mvtseries(de, cata, "f32_matrix", type_mvtseries, type_float, freq_none, ax1, ax2, sizeof fmat, fmat, &_id));
+        CHECK_SUCCESS(de_load_mvtseries(de, _id, &mv));
+        CHECK_MVTSERIES(mv, _id, type_mvtseries, type_float, freq_none, sizeof fmat[0][0], ax1, ax2, fmat);
+        for (int i = 0; i < 6; ++i)
+            FAIL_IF(((float *)mv.value)[i] != fvals[i], "f32 mvtseries value doesn't round-trip.");
+
+        CHECK_SUCCESS(de_store_mvtseries(de, cata, "f64_matrix", type_mvtseries, type_float, freq_none, ax1, ax2, sizeof dmat, dmat, &_id));
+        CHECK_SUCCESS(de_load_mvtseries(de, _id, &mv));
+        CHECK_MVTSERIES(mv, _id, type_mvtseries, type_float, freq_none, sizeof dmat[0][0], ax1, ax2, dmat);
+
+        /* complex matrix: a 3x1 of complex singles is 3 pairs of floats */
+        CHECK_SUCCESS(de_axis_plain(de, 1, &ax2));
+        CHECK_SUCCESS(de_store_mvtseries(de, cata, "c32_matrix", type_mvtseries, type_complex, freq_none, ax1, ax2, sizeof fcv, fcv, &_id));
+        CHECK_SUCCESS(de_load_mvtseries(de, _id, &mv));
+        CHECK_MVTSERIES(mv, _id, type_mvtseries, type_complex, freq_none, 2 * (int64_t)sizeof(float), ax1, ax2, fcv);
+
+        CHECK_SUCCESS(de_store_mvtseries(de, cata, "c64_matrix", type_mvtseries, type_complex, freq_none, ax1, ax2, sizeof dcv, dcv, &_id));
+        CHECK_SUCCESS(de_load_mvtseries(de, _id, &mv));
+        CHECK_MVTSERIES(mv, _id, type_mvtseries, type_complex, freq_none, 2 * (int64_t)sizeof(double), ax1, ax2, dcv);
+
+        /* --- tensors / ndtseries ------------------------------------------ */
+        float ftensor[3][2][1];
+        double dtensor[3][2][1];
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 2; ++j)
+            {
+                dtensor[i][j][0] = dvals[i * 2 + j];
+                ftensor[i][j][0] = (float)dtensor[i][j][0];
+            }
+        CHECK_SUCCESS(de_axis_plain(de, 1, &axn[0]));
+        CHECK_SUCCESS(de_axis_plain(de, 2, &axn[1]));
+        CHECK_SUCCESS(de_axis_plain(de, 3, &axn[2]));
+        CHECK_SUCCESS(de_store_ndtseries(de, cata, "f32_tensor", type_tensor, type_float, freq_none, 3, axn, sizeof ftensor, ftensor, &_id));
+        CHECK_SUCCESS(de_load_ndtseries(de, _id, &nd));
+        CHECK_NDTSERIES(nd, _id, type_tensor, type_float, freq_none, sizeof ftensor[0][0][0], 3, axn, ftensor);
+        for (int i = 0; i < 6; ++i)
+            FAIL_IF(((float *)nd.value)[i] != fvals[i], "f32 ndtseries value doesn't round-trip.");
+
+        CHECK_SUCCESS(de_store_ndtseries(de, cata, "f64_tensor", type_tensor, type_float, freq_none, 3, axn, sizeof dtensor, dtensor, &_id));
+        CHECK_SUCCESS(de_load_ndtseries(de, _id, &nd));
+        CHECK_NDTSERIES(nd, _id, type_tensor, type_float, freq_none, sizeof dtensor[0][0][0], 3, axn, dtensor);
+
+        /* the tensor holds 1*2*3 = 6 elements, so a complex one needs 6 re/im pairs */
+        float fct[12];
+        double dct[12];
+        for (int i = 0; i < 12; ++i)
+        {
+            dct[i] = dvals[i % 6];
+            fct[i] = (float)dct[i];
+        }
+        CHECK_SUCCESS(de_store_ndtseries(de, cata, "c32_tensor", type_tensor, type_complex, freq_none, 3, axn, sizeof fct, fct, &_id));
+        CHECK_SUCCESS(de_load_ndtseries(de, _id, &nd));
+        CHECK_NDTSERIES(nd, _id, type_tensor, type_complex, freq_none, 2 * (int64_t)sizeof(float), 3, axn, fct);
+
+        CHECK_SUCCESS(de_store_ndtseries(de, cata, "c64_tensor", type_tensor, type_complex, freq_none, 3, axn, sizeof dct, dct, &_id));
+        CHECK_SUCCESS(de_load_ndtseries(de, _id, &nd));
+        CHECK_NDTSERIES(nd, _id, type_tensor, type_complex, freq_none, 2 * (int64_t)sizeof(double), 3, axn, dct);
+
+        /* --- the widths must actually be distinguishable ------------------- */
+        /* Reading nbytes/count is the only way a binding can tell single from
+           double, so the two must not report the same width for the same data. */
+        tseries_t ts32, ts64;
+        CHECK_SUCCESS(de_find_object(de, cata, "f32_tseries", &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts32));
+        CHECK_SUCCESS(de_find_object(de, cata, "f64_tseries", &_id));
+        CHECK_SUCCESS(de_load_tseries(de, _id, &ts64));
+        FAIL_IF(ts32.nbytes != 6 * (int64_t)sizeof(float), "f32 tseries nbytes is not 4 per element.");
+        FAIL_IF(ts64.nbytes != 6 * (int64_t)sizeof(double), "f64 tseries nbytes is not 8 per element.");
+        FAIL_IF(ts32.nbytes == ts64.nbytes, "single and double precision are indistinguishable.");
     }
 
     /* test search and list */

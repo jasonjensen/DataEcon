@@ -36,6 +36,7 @@ if isempty(enums)
 
     enums.frequency_convert.from_iris = zeros(366, 1);
     enums.frequency_convert.from_iris(1) = enums.frequency_t.freq_yearly_dec;
+    enums.frequency_convert.from_iris(2) = enums.frequency_t.freq_halfyearly_jun;
     enums.frequency_convert.from_iris(4) = enums.frequency_t.freq_quarterly_mar;
     enums.frequency_convert.from_iris(12) = enums.frequency_t.freq_monthly;
     enums.frequency_convert.from_iris(52) = enums.frequency_t.freq_weekly_thu;

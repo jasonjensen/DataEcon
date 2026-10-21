@@ -272,7 +272,13 @@ classdef DAEC < handle
             old_iris = false;
             if isprop(ts, 'Start')
                 % modern iris
-                freq = DAEC.enums.frequency_convert.from_iris(double(ts.Frequency));
+                iris_freq = double(ts.Frequency);
+                if iris_freq == 0
+                    % integer dates; from_iris is 1-based so 0 has no entry
+                    freq = DAEC.enums.frequency_t.freq_unit;
+                else
+                    freq = DAEC.enums.frequency_convert.from_iris(iris_freq);
+                end
                 val = double(ts.Start);
             else
                 old_iris = true;

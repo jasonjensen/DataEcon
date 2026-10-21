@@ -66,6 +66,28 @@ else
 end
 
 
+% IRIS -> DataEcon: every IRIS frequency (bar integer, which has no slot in
+% the 1-based table and is handled in daec_from_iris_date) maps to a
+% DataEcon frequency that maps straight back. Half-yearly used to be
+% missing, so IRIS half-yearly series were stored as unit.
+from_iris = enums.frequency_convert.from_iris;
+back_passed = 0;
+iris_codes = [1 2 4 12 52 365];
+for code = iris_codes
+    f = from_iris(code);
+    if f ~= 0 && to_iris(f) == code
+        back_passed = back_passed + 1;
+    else
+        fprintf('❌ IRIS freq %d maps to DataEcon %d, which maps back to %d\n', code, f, to_iris(max(f, 1)));
+    end
+end
+if back_passed == numel(iris_codes)
+    fprintf('✅ IRIS -> frequency mapping is working (%d/%d).\n', back_passed, numel(iris_codes));
+else
+    fprintf('❌ %d of %d IRIS FREQUENCY MAPPINGS FAILED!\n', numel(iris_codes) - back_passed, numel(iris_codes));
+end
+
+
 % --- the unsupported-frequency policy -------------------------------------
 policy_passed = 0;
 policy_tests = 0;

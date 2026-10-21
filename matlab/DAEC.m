@@ -45,8 +45,9 @@ classdef DAEC < handle
                 % What to do with a frequency that has no IRIS equivalent.
                 % 'error' refuses to guess; 'unit' falls back to unit
                 % indexing, which keeps reading going but yields dates that
-                % are wrong rather than absent, so it is opt-in.
-                o.iris_unsupported_freq {mustBeMember(o.iris_unsupported_freq, {'error','unit'})} = 'error'
+                % are wrong rather than absent, so it is opt-in. 'warn' does
+                % the same as 'unit' and warns once per series.
+                o.iris_unsupported_freq {mustBeMember(o.iris_unsupported_freq, {'error', 'warn', 'unit'})} = 'error'
             end
             daec = DAEC.instance;
             % set before the early return, so a later load() can change it
@@ -105,7 +106,7 @@ classdef DAEC < handle
             inst = DAEC.instance;
             oldval = inst.iris_unsupported_freq_;
             if nargin > 0
-                mustBeMember(mode, {'error','unit'});
+                mustBeMember(mode, {'error', 'warn', 'unit'});
                 inst.iris_unsupported_freq_ = mode;
             end
         end
@@ -351,6 +352,64 @@ classdef DAEC < handle
             vals = double(val_ptr.Value);
         end
 
+        % Read `nelem` elements of matlab class `cls` (int8, uint16, double, ...)
+        % from a library-owned buffer. Retypes val_ptr, like read_single_array.
+        function vals = read_typed_array(val_ptr, cls, nelem)
+            if ~isa(val_ptr, 'lib.pointer')
+                error('DAEC:NotALibPointer', ...
+                    'expected a lib.pointer to retype as %s, got %s.', cls, class(val_ptr));
+            end
+            setdatatype(val_ptr, [cls 'Ptr'], nelem, 1);
+            vals = reshape(val_ptr.Value, [], 1);
+        end
+
+        % Read `nelem` floats of `elbytes` bytes each (2, 4 or 8) and widen them
+        % to double. 2-byte floats are julia's Float16.
+        function vals = read_float_array(val_ptr, nelem, elbytes)
+            switch elbytes
+                case 2
+                    vals = DAEC.half_to_double(DAEC.read_typed_array(val_ptr, 'uint16', nelem));
+                case 4
+                    vals = DAEC.read_single_array(val_ptr, nelem);
+                otherwise
+                    vals = double(DAEC.read_typed_array(val_ptr, 'double', nelem));
+            end
+        end
+
+        % IEEE 754 half-precision (julia's Float16) bit patterns to double.
+        %
+        % matlab has no built-in half type (`half` needs a toolbox), so the 2-byte
+        % values are read as uint16 bit patterns and decoded here. A half is
+        %
+        %   bit 15      sign s
+        %   bits 14-10  exponent e, biased by 15 (0 to 31)
+        %   bits 9-0    fraction m (0 to 1023)
+        %
+        % and its value depends on e:
+        %
+        %   e = 1..30   normal:     (-1)^s * (1 + m/1024) * 2^(e-15)
+        %   e = 0       subnormal:  (-1)^s * (m/1024) * 2^-14 = (-1)^s * m * 2^-24
+        %               (m = 0 is zero, kept signed so -0 stays -0)
+        %   e = 31      Inf when m = 0, NaN otherwise
+        %
+        % Every half is exactly representable as a double, so the result is exact.
+        % The bits are pulled apart with plain arithmetic on doubles rather than
+        % bitshift/bitand so it works on any numeric input and in Octave.
+        function vals = half_to_double(h)
+            h = double(h);
+            sgn = 1 - 2 * (h >= 32768);     % bit 15: +1 or -1
+            e = mod(floor(h / 1024), 32);   % bits 14-10
+            m = mod(h, 1024);               % bits 9-0
+            % assume normal, then overwrite the subnormal and special cases
+            vals = sgn .* (1 + m / 1024) .* 2 .^ (e - 15);
+            sub = e == 0;
+            vals(sub) = sgn(sub) .* m(sub) * 2^-24;
+            special = e == 31;
+            vals(special & m == 0) = sgn(special & m == 0) * Inf;
+            % a NaN's sign and payload bits are dropped; every NaN reads as NaN
+            vals(special & m ~= 0) = NaN;
+        end
+
         % Work out how many bytes each stored element occupies. `fallback` is used
         % when nbytes is unknown, and the result must be one of `allowed`.
         function elbytes = element_bytes(nbytes, nelem, fallback, allowed, what)
@@ -462,14 +521,14 @@ classdef DAEC < handle
             data = date_array;
         end
 
-        function iris_series = make_iris_series(axes, data, attr)
+        function iris_series = make_iris_series(axes, data, attr, name)
             make_tseries = true;
             if isfield(attr, 'iris_type') && attr.iris_type == 'S'
                 make_tseries = false;
             end
             if numel(axes) == 1
                 iris_freq = DAEC.enums.frequency_convert.to_iris(axes.frequency);
-                start_date = DAEC.iris_date(iris_freq, axes);
+                start_date = DAEC.iris_date(iris_freq, axes, name);
                 end_date = start_date + (axes.length - 1);
                 if make_tseries
                     if end_date >= start_date
@@ -502,7 +561,7 @@ classdef DAEC < handle
                 
             else
                 iris_freq = DAEC.enums.frequency_convert.to_iris(axes(1).frequency);
-                start_date = DAEC.iris_date(iris_freq, axes(1));
+                start_date = DAEC.iris_date(iris_freq, axes(1), name);
                 end_date = start_date + (axes(1).length - 1);
                 if make_tseries
                     if end_date >= start_date
@@ -553,7 +612,7 @@ classdef DAEC < handle
             end
         end
 
-        function iris_date_obj = iris_date(iris_freq, axis)
+        function iris_date_obj = iris_date(iris_freq, axis, name)
             daec_start = axis.first;
             switch iris_freq
                 case 1 % yearly
@@ -590,12 +649,20 @@ classdef DAEC < handle
                         % dates this produces are not the series' real dates,
                         % so only enable it where that is acceptable.
                         iris_date_obj = daec_start;
+                    elseif strcmp(DAEC.iris_unsupported_freq(), 'warn')
+                        % Opt-in: use unit frequency, but warn the user.
+                        iris_date_obj = daec_start;
+                        bt = warning('off', 'backtrace');
+                        warning('DataEcon:NoIrisFreq', ...
+                            'No IRIS conversion available for frequency %s. Using unit frequency for series %s.', ...
+                            string(axis.frequency), name);
+                        warning(bt);   % restore the caller's backtrace setting
                     else
                         error('DataEcon:NoIrisFreq', ...
-                            ['No IRIS conversion available for frequency %s. ' ...
-                             'Pass iris_unsupported_freq="unit" to DAEC.load to ' ...
-                             'index such frequencies by unit instead.'], ...
-                            string(axis.frequency));
+                            ['No IRIS conversion available for frequency %s for series %s. ' ...
+                             'Pass iris_unsupported_freq="unit" (or "warn") to ' ...
+                             'DAEC.load to index such frequencies by unit instead.'], ...
+                            string(axis.frequency), name);
                     end
             end
         end

@@ -326,7 +326,7 @@ classdef DEFile < handle
                 case DAEC.enums.axis_type_t.axis_range
                     if de.read_to_iris
                         attr = get_all_attributes(de, obj_t.id);
-                        val = DAEC.make_iris_series(DEAxis(tseries_t.axis), data, attr);
+                        val = DAEC.make_iris_series(DEAxis(tseries_t.axis), data, attr, obj_t.name);
                     elseif de.read_to_tse
                         val = DAEC.make_tse_series(DEAxis(tseries_t.axis), data);
                     else

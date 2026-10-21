@@ -46,7 +46,7 @@ classdef DAEC < handle
                 % 'error' refuses to guess; 'unit' falls back to unit
                 % indexing, which keeps reading going but yields dates that
                 % are wrong rather than absent, so it is opt-in.
-                o.iris_unsupported_freq {mustBeMember(o.iris_unsupported_freq, {'error','unit'})} = 'error'
+                o.iris_unsupported_freq {mustBeMember(o.iris_unsupported_freq, {'error', 'warn', 'unit'})} = 'error'
             end
             daec = DAEC.instance;
             % set before the early return, so a later load() can change it
@@ -500,14 +500,14 @@ classdef DAEC < handle
             data = date_array;
         end
 
-        function iris_series = make_iris_series(axes, data, attr)
+        function iris_series = make_iris_series(axes, data, attr, name)
             make_tseries = true;
             if isfield(attr, 'iris_type') && attr.iris_type == 'S'
                 make_tseries = false;
             end
             if numel(axes) == 1
                 iris_freq = DAEC.enums.frequency_convert.to_iris(axes.frequency);
-                start_date = DAEC.iris_date(iris_freq, axes);
+                start_date = DAEC.iris_date(iris_freq, axes, name);
                 end_date = start_date + (axes.length - 1);
                 if make_tseries
                     if end_date >= start_date
@@ -540,7 +540,7 @@ classdef DAEC < handle
                 
             else
                 iris_freq = DAEC.enums.frequency_convert.to_iris(axes(1).frequency);
-                start_date = DAEC.iris_date(iris_freq, axes(1));
+                start_date = DAEC.iris_date(iris_freq, axes(1), {}, name);
                 end_date = start_date + (axes(1).length - 1);
                 if make_tseries
                     if end_date >= start_date
@@ -591,7 +591,7 @@ classdef DAEC < handle
             end
         end
 
-        function iris_date_obj = iris_date(iris_freq, axis)
+        function iris_date_obj = iris_date(iris_freq, axis, name)
             daec_start = axis.first;
             switch iris_freq
                 case 1 % yearly
@@ -628,12 +628,18 @@ classdef DAEC < handle
                         % dates this produces are not the series' real dates,
                         % so only enable it where that is acceptable.
                         iris_date_obj = daec_start;
+                    elseif strcmp(DAEC.iris_unsupported_freq(), 'warn')
+                        % Opt-in: use unit frequency, but warn the user.
+                        iris_date_obj = daec_start;
+                        warning('off','backtrace')
+                        warning('DataEcon:NoIrisFreq', sprintf('No IRIS conversion available for frequency %s. Using unit frequency for series %s.', string(axis.frequency), name));
+                        warning('on','backtrace')
                     else
                         error('DataEcon:NoIrisFreq', ...
-                            ['No IRIS conversion available for frequency %s. ' ...
+                            ['No IRIS conversion available for frequency %s for series %s. ' ...
                              'Pass iris_unsupported_freq="unit" to DAEC.load to ' ...
                              'index such frequencies by unit instead.'], ...
-                            string(axis.frequency));
+                            string(axis.frequency), name);
                     end
             end
         end

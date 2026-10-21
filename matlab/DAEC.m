@@ -351,6 +351,44 @@ classdef DAEC < handle
             vals = double(val_ptr.Value);
         end
 
+        % Read `nelem` elements of matlab class `cls` (int8, uint16, double, ...)
+        % from a library-owned buffer. Retypes val_ptr, like read_single_array.
+        function vals = read_typed_array(val_ptr, cls, nelem)
+            if ~isa(val_ptr, 'lib.pointer')
+                error('DAEC:NotALibPointer', ...
+                    'expected a lib.pointer to retype as %s, got %s.', cls, class(val_ptr));
+            end
+            setdatatype(val_ptr, [cls 'Ptr'], nelem, 1);
+            vals = reshape(val_ptr.Value, [], 1);
+        end
+
+        % Read `nelem` floats of `elbytes` bytes each (2, 4 or 8) and widen them
+        % to double. 2-byte floats are julia's Float16.
+        function vals = read_float_array(val_ptr, nelem, elbytes)
+            switch elbytes
+                case 2
+                    vals = DAEC.half_to_double(DAEC.read_typed_array(val_ptr, 'uint16', nelem));
+                case 4
+                    vals = DAEC.read_single_array(val_ptr, nelem);
+                otherwise
+                    vals = double(DAEC.read_typed_array(val_ptr, 'double', nelem));
+            end
+        end
+
+        % IEEE half-precision bit patterns (uint16) to double, exactly.
+        function vals = half_to_double(h)
+            h = double(h);
+            sgn = 1 - 2 * (h >= 32768);
+            e = mod(floor(h / 1024), 32);
+            m = mod(h, 1024);
+            vals = sgn .* (1 + m / 1024) .* 2 .^ (e - 15);
+            sub = e == 0;
+            vals(sub) = sgn(sub) .* m(sub) * 2^-24;
+            special = e == 31;
+            vals(special & m == 0) = sgn(special & m == 0) * Inf;
+            vals(special & m ~= 0) = NaN;
+        end
+
         % Work out how many bytes each stored element occupies. `fallback` is used
         % when nbytes is unknown, and the result must be one of `allowed`.
         function elbytes = element_bytes(nbytes, nelem, fallback, allowed, what)

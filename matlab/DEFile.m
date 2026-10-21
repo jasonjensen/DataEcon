@@ -365,7 +365,7 @@ classdef DEFile < handle
                 val = data;
             elseif de.read_to_iris
                 attr = get_all_attributes(de, obj_t.id);
-                val = DAEC.make_iris_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data, attr);
+                val = DAEC.make_iris_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data, attr, obj_t.name);
             elseif de.read_to_tse
                 val = DAEC.make_tse_series([DEAxis(mvtseries_t.axis1), DEAxis(mvtseries_t.axis2)], data);
             else

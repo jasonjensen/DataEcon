@@ -45,7 +45,8 @@ classdef DAEC < handle
                 % What to do with a frequency that has no IRIS equivalent.
                 % 'error' refuses to guess; 'unit' falls back to unit
                 % indexing, which keeps reading going but yields dates that
-                % are wrong rather than absent, so it is opt-in.
+                % are wrong rather than absent, so it is opt-in. 'warn' does
+                % the same as 'unit' and warns once per series.
                 o.iris_unsupported_freq {mustBeMember(o.iris_unsupported_freq, {'error', 'warn', 'unit'})} = 'error'
             end
             daec = DAEC.instance;
@@ -105,7 +106,7 @@ classdef DAEC < handle
             inst = DAEC.instance;
             oldval = inst.iris_unsupported_freq_;
             if nargin > 0
-                mustBeMember(mode, {'error','unit'});
+                mustBeMember(mode, {'error', 'warn', 'unit'});
                 inst.iris_unsupported_freq_ = mode;
             end
         end
@@ -560,7 +561,7 @@ classdef DAEC < handle
                 
             else
                 iris_freq = DAEC.enums.frequency_convert.to_iris(axes(1).frequency);
-                start_date = DAEC.iris_date(iris_freq, axes(1), {}, name);
+                start_date = DAEC.iris_date(iris_freq, axes(1), name);
                 end_date = start_date + (axes(1).length - 1);
                 if make_tseries
                     if end_date >= start_date
@@ -651,14 +652,16 @@ classdef DAEC < handle
                     elseif strcmp(DAEC.iris_unsupported_freq(), 'warn')
                         % Opt-in: use unit frequency, but warn the user.
                         iris_date_obj = daec_start;
-                        warning('off','backtrace')
-                        warning('DataEcon:NoIrisFreq', sprintf('No IRIS conversion available for frequency %s. Using unit frequency for series %s.', string(axis.frequency), name));
-                        warning('on','backtrace')
+                        bt = warning('off', 'backtrace');
+                        warning('DataEcon:NoIrisFreq', ...
+                            'No IRIS conversion available for frequency %s. Using unit frequency for series %s.', ...
+                            string(axis.frequency), name);
+                        warning(bt);   % restore the caller's backtrace setting
                     else
                         error('DataEcon:NoIrisFreq', ...
                             ['No IRIS conversion available for frequency %s for series %s. ' ...
-                             'Pass iris_unsupported_freq="unit" to DAEC.load to ' ...
-                             'index such frequencies by unit instead.'], ...
+                             'Pass iris_unsupported_freq="unit" (or "warn") to ' ...
+                             'DAEC.load to index such frequencies by unit instead.'], ...
                             string(axis.frequency), name);
                     end
             end

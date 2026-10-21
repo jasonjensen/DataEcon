@@ -374,6 +374,10 @@ classdef DEFile < handle
         end
 
         function val = retrieve_ndarray(de, obj_t)
+            bt = warning('off', 'backtrace');
+            warning('DataEcon:NDSeriesFloat32', ...
+                'All NDarrays are assumed to be composed of Float64 values.');
+            warning(bt);   % restore the caller's backtrace setting
 
             % get axis ids
             axis_ids_ptr = libpointer('int64Ptr', repmat(0, 1, DAEC.max_axes));

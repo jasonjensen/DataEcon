@@ -375,17 +375,37 @@ classdef DAEC < handle
             end
         end
 
-        % IEEE half-precision bit patterns (uint16) to double, exactly.
+        % IEEE 754 half-precision (julia's Float16) bit patterns to double.
+        %
+        % matlab has no built-in half type (`half` needs a toolbox), so the 2-byte
+        % values are read as uint16 bit patterns and decoded here. A half is
+        %
+        %   bit 15      sign s
+        %   bits 14-10  exponent e, biased by 15 (0 to 31)
+        %   bits 9-0    fraction m (0 to 1023)
+        %
+        % and its value depends on e:
+        %
+        %   e = 1..30   normal:     (-1)^s * (1 + m/1024) * 2^(e-15)
+        %   e = 0       subnormal:  (-1)^s * (m/1024) * 2^-14 = (-1)^s * m * 2^-24
+        %               (m = 0 is zero, kept signed so -0 stays -0)
+        %   e = 31      Inf when m = 0, NaN otherwise
+        %
+        % Every half is exactly representable as a double, so the result is exact.
+        % The bits are pulled apart with plain arithmetic on doubles rather than
+        % bitshift/bitand so it works on any numeric input and in Octave.
         function vals = half_to_double(h)
             h = double(h);
-            sgn = 1 - 2 * (h >= 32768);
-            e = mod(floor(h / 1024), 32);
-            m = mod(h, 1024);
+            sgn = 1 - 2 * (h >= 32768);     % bit 15: +1 or -1
+            e = mod(floor(h / 1024), 32);   % bits 14-10
+            m = mod(h, 1024);               % bits 9-0
+            % assume normal, then overwrite the subnormal and special cases
             vals = sgn .* (1 + m / 1024) .* 2 .^ (e - 15);
             sub = e == 0;
             vals(sub) = sgn(sub) .* m(sub) * 2^-24;
             special = e == 31;
             vals(special & m == 0) = sgn(special & m == 0) * Inf;
+            % a NaN's sign and payload bits are dropped; every NaN reads as NaN
             vals(special & m ~= 0) = NaN;
         end
 
